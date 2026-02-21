@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:brapi.dev)",
+      "Bash(dir /s /b \"C:\\\\Users\\\\gusta\\\\OneDrive\\\\Imagens\\\\Documentos\\\\NodeProjects\\\\Preço de Açoes\")",
+      "Bash(findstr:*)",
+      "Bash(Get-ChildItem -Recurse \"C:\\\\Users\\\\gusta\\\\OneDrive\\\\Imagens\\\\Documentos\\\\NodeProjects\\\\Preço de Açoes\" -Exclude node_modules,.git)",
+      "Bash(cd \"C:\\\\Users\\\\gusta\\\\OneDrive\\\\Imagens\\\\Documentos\\\\NodeProjects\\\\Preço de Açoes\" && npx tsc --noEmit 2>&1)"
+    ]
+  }
+}
