@@ -7,6 +7,8 @@ export interface BrapiFinancialData {
   debtToEquity?: number;
   currentRatio?: number;
   freeCashflow?: number;
+  totalRevenue?: number;
+  profitMargins?: number;
 }
 
 export interface BrapiQuoteResult {
@@ -21,6 +23,8 @@ export interface BrapiQuoteResult {
   earningsPerShare: number;
   priceEarnings: number;
   bookValue?: number;
+  dividendYield?: number;
+  enterpriseValue?: number;
   financialData?: BrapiFinancialData;
 }
 

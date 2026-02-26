@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, ArrowRight, RefreshCw, Trash2, Clock, LineChart, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowRight, RefreshCw, Trash2, Clock, LineChart, ArrowUpDown, ArrowUp, ArrowDown, Filter, Columns } from "lucide-react";
 import { calculateGrahamValue, calculateROI, calculateMarginOfSafety, getValuationStatus } from "@/lib/calculators";
 import type { Stock } from "@/types/stock";
 
@@ -20,7 +20,8 @@ interface StocksTableProps {
     onShowChart?: (ticker: string) => void;
 }
 
-type SortKey = "ticker" | "price" | "change" | "cost" | "roi" | "graham" | "margin" | "status" | "quantity" | "total";
+type ToggleableCol = "pl" | "pvp" | "dividendYield" | "evEbitda" | "netMargin" | "ebitdaMargin";
+type SortKey = "ticker" | "price" | "change" | "cost" | "roi" | "graham" | "margin" | "status" | "quantity" | "total" | ToggleableCol;
 type SortDir = "asc" | "desc";
 type ValuationFilter = "all" | "Subvalorizada" | "Sobrevalorizada" | "Justo";
 
@@ -40,10 +41,29 @@ function formatCurrency(value: number): string {
 
 const STATUS_ORDER: Record<string, number> = { Subvalorizada: 0, Justo: 1, Sobrevalorizada: 2 };
 
+const TOGGLEABLE_COLS: { key: ToggleableCol; label: string }[] = [
+    { key: "pl", label: "P/L" },
+    { key: "pvp", label: "P/VP" },
+    { key: "dividendYield", label: "Div. Yield" },
+    { key: "evEbitda", label: "EV/EBITDA" },
+    { key: "netMargin", label: "Mg. Líquida" },
+    { key: "ebitdaMargin", label: "Mg. EBITDA" },
+];
+
 export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock, onRemoveStock, onShowChart }) => {
     const [sortKey, setSortKey] = useState<SortKey>("ticker");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
     const [filter, setFilter] = useState<ValuationFilter>("all");
+    const [visibleCols, setVisibleCols] = useState<Set<ToggleableCol>>(new Set(["pl", "pvp", "dividendYield"]));
+
+    const toggleCol = (col: ToggleableCol) => {
+        setVisibleCols((prev) => {
+            const next = new Set(prev);
+            if (next.has(col)) next.delete(col);
+            else next.add(col);
+            return next;
+        });
+    };
 
     const handleSort = (key: SortKey) => {
         if (sortKey === key) {
@@ -95,6 +115,12 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                 case "graham": return dir * (a.vi - b.vi);
                 case "margin": return dir * (a.margin - b.margin);
                 case "status": return dir * ((STATUS_ORDER[a.status] ?? 1) - (STATUS_ORDER[b.status] ?? 1));
+                case "pl": return dir * (a.stock.pl - b.stock.pl);
+                case "pvp": return dir * (a.stock.pvp - b.stock.pvp);
+                case "dividendYield": return dir * (a.stock.dividendYield - b.stock.dividendYield);
+                case "evEbitda": return dir * (a.stock.evEbitda - b.stock.evEbitda);
+                case "netMargin": return dir * (a.stock.netMargin - b.stock.netMargin);
+                case "ebitdaMargin": return dir * (a.stock.ebitdaMargin - b.stock.ebitdaMargin);
                 default: return 0;
             }
         });
@@ -120,8 +146,31 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
         </TableHead>
     );
 
+    const totalColSpan = 11 + visibleCols.size;
+
     return (
         <div className="w-full">
+            {/* Column toggle bar */}
+            {stocks.length > 0 && (
+                <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border/20">
+                    <Columns className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mr-1 shrink-0">Colunas:</span>
+                    {TOGGLEABLE_COLS.map((col) => (
+                        <button
+                            key={col.key}
+                            onClick={() => toggleCol(col.key)}
+                            className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border transition-all ${
+                                visibleCols.has(col.key)
+                                    ? "border-primary/50 bg-primary/10 text-primary"
+                                    : "border-border/40 text-muted-foreground/60 hover:border-border/70 hover:bg-card hover:text-muted-foreground"
+                            }`}
+                        >
+                            {col.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Filter bar */}
             {stocks.length > 0 && (
                 <div className="flex items-center gap-2 px-6 py-3 border-b border-border/30">
@@ -160,6 +209,12 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                         <ThButton col="roi">ROI</ThButton>
                         <ThButton col="graham">Graham</ThButton>
                         <ThButton col="margin">Margem</ThButton>
+                        {visibleCols.has("pl") && <ThButton col="pl">P/L</ThButton>}
+                        {visibleCols.has("pvp") && <ThButton col="pvp">P/VP</ThButton>}
+                        {visibleCols.has("dividendYield") && <ThButton col="dividendYield">Div. Yield</ThButton>}
+                        {visibleCols.has("evEbitda") && <ThButton col="evEbitda">EV/EBITDA</ThButton>}
+                        {visibleCols.has("netMargin") && <ThButton col="netMargin">Mg. Líquida</ThButton>}
+                        {visibleCols.has("ebitdaMargin") && <ThButton col="ebitdaMargin">Mg. EBITDA</ThButton>}
                         <ThButton col="status">Status</ThButton>
                         <TableHead className="text-right text-[10px] font-black uppercase tracking-widest text-primary py-4 px-6">Ações</TableHead>
                     </TableRow>
@@ -167,7 +222,7 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                 <TableBody>
                     {sorted.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={11} className="text-center py-20">
+                            <TableCell colSpan={totalColSpan} className="text-center py-20">
                                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                     <p className="text-sm font-medium">
                                         {stocks.length === 0 ? "Sua carteira está vazia." : "Nenhum ativo corresponde ao filtro."}
@@ -255,6 +310,42 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                                         </span>
                                     </div>
                                 </TableCell>
+                                {visibleCols.has("pl") && (
+                                    <TableCell className="font-mono text-sm text-muted-foreground">
+                                        {stock.pl > 0 ? stock.pl.toFixed(1) : "—"}
+                                    </TableCell>
+                                )}
+                                {visibleCols.has("pvp") && (
+                                    <TableCell className="font-mono text-sm text-muted-foreground">
+                                        {stock.pvp > 0 ? stock.pvp.toFixed(2) : "—"}
+                                    </TableCell>
+                                )}
+                                {visibleCols.has("dividendYield") && (
+                                    <TableCell>
+                                        <span className={`text-sm font-black ${stock.dividendYield > 0.04 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                                            {stock.dividendYield > 0 ? (stock.dividendYield * 100).toFixed(2) + "%" : "—"}
+                                        </span>
+                                    </TableCell>
+                                )}
+                                {visibleCols.has("evEbitda") && (
+                                    <TableCell className="font-mono text-sm text-muted-foreground">
+                                        {stock.evEbitda > 0 ? stock.evEbitda.toFixed(1) + "x" : "—"}
+                                    </TableCell>
+                                )}
+                                {visibleCols.has("netMargin") && (
+                                    <TableCell>
+                                        <span className={`text-sm font-black ${stock.netMargin >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                            {stock.netMargin !== 0 ? (stock.netMargin * 100).toFixed(2) + "%" : "—"}
+                                        </span>
+                                    </TableCell>
+                                )}
+                                {visibleCols.has("ebitdaMargin") && (
+                                    <TableCell>
+                                        <span className="text-sm font-black text-blue-400">
+                                            {stock.ebitdaMargin > 0 ? (stock.ebitdaMargin * 100).toFixed(2) + "%" : "—"}
+                                        </span>
+                                    </TableCell>
+                                )}
                                 <TableCell>
                                     <Badge
                                         className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest border-2 shadow-lg ${status === "Subvalorizada"

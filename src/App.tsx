@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { LoginScreen } from "@/components/LoginScreen";
 import { StocksTable } from "@/components/stocks/StocksTable";
 import { StockForm } from "@/components/stocks/StockForm";
 import { StockChart } from "@/components/stocks/StockChart";
-import { PortfolioDashboard } from "@/components/stocks/PortfolioDashboard";
+import { MarketTicker } from "@/components/stocks/MarketTicker";
 import { LayoutDashboard, TrendingUp, RefreshCw, Settings, Key, Wifi, WifiOff, X } from "lucide-react";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,13 @@ import { Label } from "@/components/ui/label";
 import type { Stock } from "@/types/stock";
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+
+  if (!authenticated) {
+    return <LoginScreen onLogin={() => setAuthenticated(true)} />;
+  }
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const {
     stocks,
     token,
@@ -169,6 +177,10 @@ function App() {
             </div>
           </div>
         )}
+
+        <section className="animate-in fade-in slide-in-from-bottom-2 duration-400">
+          <MarketTicker />
+        </section>
 
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} token={token} />
