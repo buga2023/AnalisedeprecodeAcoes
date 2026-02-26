@@ -11,14 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Stock } from "@/types/stock";
 
-function App() {
-  const [authenticated, setAuthenticated] = useState(false);
-
-  if (!authenticated) {
-    return <LoginScreen onLogin={() => setAuthenticated(true)} />;
-  }
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+function AppContent() {
   const {
     stocks,
     token,
@@ -232,6 +225,16 @@ function App() {
       </div>
     </div>
   );
+}
+
+function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+
+  if (!authenticated) {
+    return <LoginScreen onLogin={() => setAuthenticated(true)} />;
+  }
+
+  return <AppContent />;
 }
 
 export default App;
