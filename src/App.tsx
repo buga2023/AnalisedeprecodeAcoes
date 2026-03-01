@@ -4,6 +4,9 @@ import { StocksTable } from "@/components/stocks/StocksTable";
 import { StockForm } from "@/components/stocks/StockForm";
 import { StockChart } from "@/components/stocks/StockChart";
 import { MarketTicker } from "@/components/stocks/MarketTicker";
+import { RiskMetrics } from "@/components/stocks/RiskMetrics";
+import { DCFValuation } from "@/components/stocks/DCFValuation";
+import { AIInsights } from "@/components/stocks/AIInsights";
 import { LayoutDashboard, TrendingUp, RefreshCw, Settings, Key, Wifi, WifiOff, X } from "lucide-react";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { Button } from "@/components/ui/button";
@@ -178,6 +181,25 @@ function AppContent() {
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} token={token} />
         </section>
+
+        {/* AI Insights */}
+        {stocks.length > 0 && (
+          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <AIInsights stocks={stocks} />
+          </section>
+        )}
+
+        {/* Risk Metrics & DCF Valuation - side by side on large screens */}
+        {stocks.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-5 duration-600">
+            <section>
+              <RiskMetrics stocks={stocks} />
+            </section>
+            <section>
+              <DCFValuation stocks={stocks} />
+            </section>
+          </div>
+        )}
 
         <main className="animate-in fade-in slide-in-from-bottom-6 duration-700">
           <div className="rounded-2xl border border-border/50 bg-card shadow-2xl overflow-hidden">
