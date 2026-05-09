@@ -43,7 +43,7 @@ export interface DadosQuantitativos {
 /**
  * Analisa uma acao individualmente usando dados de scraping + IA
  */
-export async function analisarAcaoComIA(ticker: string, nomeEmpresa: string, dados: DadosQuantitativos): Promise<AnaliseIA> {
+export async function analisarAcaoComIA(ticker: string, nomeEmpresa: string, dados: DadosQuantitativos, apiKey: string): Promise<AnaliseIA> {
   // 1. Coletar dados via scraping (pode retornar vazio — nao bloqueia)
   const dadosRI: DadosRI = await coletarDadosRI(ticker);
 
@@ -98,7 +98,7 @@ Regras:
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      
+      "x-api-key": apiKey,
     },
     body: JSON.stringify({
       model: GROQ_MODEL,

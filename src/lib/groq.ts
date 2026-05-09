@@ -101,7 +101,7 @@ REGRAS DE ANALISE:
 Responda SOMENTE com o JSON, nada mais.`;
 }
 
-export async function fetchGroqInsights(stocks: PortfolioData[]): Promise<GroqResponse> {
+export async function fetchGroqInsights(apiKey: string, stocks: PortfolioData[]): Promise<GroqResponse> {
     
 
     if (stocks.length === 0) {
@@ -114,6 +114,7 @@ export async function fetchGroqInsights(stocks: PortfolioData[]): Promise<GroqRe
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            "x-api-key": apiKey,
             
         },
         body: JSON.stringify({

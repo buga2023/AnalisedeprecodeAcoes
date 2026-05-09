@@ -5,14 +5,14 @@ export const handler: Handler = async (event: HandlerEvent) => {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = (event.headers["x-api-key"] || event.headers["X-API-Key"]) || process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return { statusCode: 500, body: JSON.stringify({ error: "Groq API Key não configurada no servidor." }) };
+    return { statusCode: 401, body: JSON.stringify({ error: "Groq API Key não configurada. Forneça uma chave no cabeçalho x-api-key ou configure no servidor." }) };
   }
 
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, x-api-key",
     "Content-Type": "application/json",
   };
 
