@@ -33,41 +33,6 @@ interface BrapiQuoteResponse {
   requestedAt: string;
   took: string;
 }
-const BRAPI_PROXY_URL = "/api/brapi";
-
-export interface BrapiFinancialData {
-  returnOnEquity?: number;
-  totalDebt?: number;
-  ebitda?: number;
-  debtToEquity?: number;
-  currentRatio?: number;
-  freeCashflow?: number;
-  totalRevenue?: number;
-  profitMargins?: number;
-}
-
-export interface BrapiQuoteResult {
-  symbol: string;
-  shortName: string;
-  longName: string;
-  currency: string;
-  regularMarketPrice: number;
-  regularMarketChange: number;
-  regularMarketChangePercent: number;
-  regularMarketTime: string;
-  earningsPerShare: number;
-  priceEarnings: number;
-  bookValue?: number;
-  dividendYield?: number;
-  enterpriseValue?: number;
-  financialData?: BrapiFinancialData;
-}
-
-interface BrapiQuoteResponse {
-  results: BrapiQuoteResult[];
-  requestedAt: string;
-  took: string;
-}
 
 export interface BrapiError {
   message: string;
@@ -114,7 +79,6 @@ export interface StockOption {
 }
 
 const INTERNATIONAL_STOCKS: StockOption[] = [
-  // US - Tech
   { ticker: "AAPL", label: "Apple Inc.", market: "US" },
   { ticker: "MSFT", label: "Microsoft Corp.", market: "US" },
   { ticker: "GOOGL", label: "Alphabet (Google)", market: "US" },
@@ -123,63 +87,6 @@ const INTERNATIONAL_STOCKS: StockOption[] = [
   { ticker: "NVDA", label: "NVIDIA Corp.", market: "US" },
   { ticker: "TSLA", label: "Tesla Inc.", market: "US" },
   { ticker: "NFLX", label: "Netflix Inc.", market: "US" },
-  { ticker: "AMD", label: "Advanced Micro Devices", market: "US" },
-  { ticker: "INTC", label: "Intel Corp.", market: "US" },
-  { ticker: "CRM", label: "Salesforce Inc.", market: "US" },
-  { ticker: "ORCL", label: "Oracle Corp.", market: "US" },
-  { ticker: "ADBE", label: "Adobe Inc.", market: "US" },
-  { ticker: "CSCO", label: "Cisco Systems", market: "US" },
-  { ticker: "AVGO", label: "Broadcom Inc.", market: "US" },
-  { ticker: "QCOM", label: "Qualcomm Inc.", market: "US" },
-  { ticker: "IBM", label: "IBM Corp.", market: "US" },
-  { ticker: "UBER", label: "Uber Technologies", market: "US" },
-  { ticker: "SHOP", label: "Shopify Inc.", market: "US" },
-  { ticker: "SNAP", label: "Snap Inc.", market: "US" },
-  { ticker: "SPOT", label: "Spotify Technology", market: "US" },
-  { ticker: "SQ", label: "Block Inc.", market: "US" },
-  { ticker: "PYPL", label: "PayPal Holdings", market: "US" },
-  { ticker: "PLTR", label: "Palantir Technologies", market: "US" },
-  // US - Finance
-  { ticker: "JPM", label: "JPMorgan Chase", market: "US" },
-  { ticker: "BAC", label: "Bank of America", market: "US" },
-  { ticker: "WFC", label: "Wells Fargo", market: "US" },
-  { ticker: "GS", label: "Goldman Sachs", market: "US" },
-  { ticker: "MS", label: "Morgan Stanley", market: "US" },
-  { ticker: "V", label: "Visa Inc.", market: "US" },
-  { ticker: "MA", label: "Mastercard Inc.", market: "US" },
-  { ticker: "BRK-A", label: "Berkshire Hathaway A", market: "US" },
-  { ticker: "BRK-B", label: "Berkshire Hathaway B", market: "US" },
-  // US - Healthcare
-  { ticker: "JNJ", label: "Johnson & Johnson", market: "US" },
-  { ticker: "PFE", label: "Pfizer Inc.", market: "US" },
-  { ticker: "UNH", label: "UnitedHealth Group", market: "US" },
-  { ticker: "ABBV", label: "AbbVie Inc.", market: "US" },
-  { ticker: "MRK", label: "Merck & Co.", market: "US" },
-  { ticker: "LLY", label: "Eli Lilly & Co.", market: "US" },
-  // US - Consumer / Industrial
-  { ticker: "KO", label: "Coca-Cola Co.", market: "US" },
-  { ticker: "PEP", label: "PepsiCo Inc.", market: "US" },
-  { ticker: "WMT", label: "Walmart Inc.", market: "US" },
-  { ticker: "COST", label: "Costco Wholesale", market: "US" },
-  { ticker: "NKE", label: "Nike Inc.", market: "US" },
-  { ticker: "MCD", label: "McDonald's Corp.", market: "US" },
-  { ticker: "SBUX", label: "Starbucks Corp.", market: "US" },
-  { ticker: "DIS", label: "Walt Disney Co.", market: "US" },
-  { ticker: "HD", label: "Home Depot", market: "US" },
-  { ticker: "BA", label: "Boeing Co.", market: "US" },
-  { ticker: "CAT", label: "Caterpillar Inc.", market: "US" },
-  { ticker: "F", label: "Ford Motor Co.", market: "US" },
-  { ticker: "GM", label: "General Motors", market: "US" },
-  // US - Energy
-  { ticker: "XOM", label: "Exxon Mobil", market: "US" },
-  { ticker: "CVX", label: "Chevron Corp.", market: "US" },
-  // US - ETFs
-  { ticker: "SPY", label: "S&P 500 ETF", market: "US" },
-  { ticker: "QQQ", label: "Nasdaq 100 ETF", market: "US" },
-  { ticker: "IWM", label: "Russell 2000 ETF", market: "US" },
-  { ticker: "VTI", label: "Vanguard Total Market", market: "US" },
-  { ticker: "VOO", label: "Vanguard S&P 500", market: "US" },
-  // Crypto
   { ticker: "BTC", label: "Bitcoin", market: "CRYPTO" },
   { ticker: "ETH", label: "Ethereum", market: "CRYPTO" },
 ];
@@ -205,13 +112,11 @@ export async function fetchAvailableStocks(): Promise<StockOption[]> {
       market: "BR" as const,
     }));
 
-    // Merge: BR stocks first, then international (excluding duplicates)
     const brTickers = new Set(brStocks.map((s) => s.ticker));
     const intlFiltered = INTERNATIONAL_STOCKS.filter((s) => !brTickers.has(s.ticker));
     cachedStockOptions = [...brStocks, ...intlFiltered];
     return cachedStockOptions;
   } catch {
-    // Fallback: return at least the international list if API fails
     cachedStockOptions = INTERNATIONAL_STOCKS;
     return cachedStockOptions;
   }
@@ -300,4 +205,20 @@ export async function fetchMultipleQuotes(
   }
 
   return data.results;
+}
+
+export async function searchStocks(query: string): Promise<any[]> {
+  if (!query) return [];
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin);
+  url.searchParams.set("endpoint", "/search");
+  url.searchParams.set("q", query);
+
+  try {
+    const response = await fetch(url.toString());
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.stocks || [];
+  } catch {
+    return [];
+  }
 }

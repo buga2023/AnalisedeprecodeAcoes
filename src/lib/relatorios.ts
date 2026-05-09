@@ -1,6 +1,5 @@
 import type { Relatorio } from "@/types/stock";
-
-const BRAPI_BASE_URL = "https://brapi.dev/api";
+const BRAPI_PROXY_URL = "/api/brapi";
 
 interface BrapiStatementItem {
   endDate?: string;

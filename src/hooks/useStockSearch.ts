@@ -1,30 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchAvailableStocks } from "@/lib/api";
-import type { StockOption } from "@/lib/api";
+import { useState, useCallback, useRef } from "react";
+import { searchStocks } from "@/lib/api";
 
-const MAX_RESULTS = 20;
+const DEBOUNCE_MS = 300;
 
 export function useStockSearch() {
-  const [allStocks, setAllStocks] = useState<StockOption[]>([]);
-  const [results, setResults] = useState<StockOption[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [results, setResults] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const loadedRef = useRef(false);
-
-  useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-
-    fetchAvailableStocks()
-      .then((stocks) => {
-        setAllStocks(stocks);
-        setError(null);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Erro ao carregar tickers.");
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = useCallback(
     (query: string) => {
@@ -32,30 +15,41 @@ export function useStockSearch() {
         setResults([]);
         return;
       }
-      const upper = query.toUpperCase();
-      const lower = query.toLowerCase();
-      // Prioritize: exact ticker start > label match > ticker contains
-      const startsWithTicker: StockOption[] = [];
-      const matchesLabel: StockOption[] = [];
-      const containsTicker: StockOption[] = [];
 
-      for (const s of allStocks) {
-        if (startsWithTicker.length + matchesLabel.length + containsTicker.length >= MAX_RESULTS * 2) break;
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-        if (s.ticker.startsWith(upper)) {
-          startsWithTicker.push(s);
-        } else if (s.label.toLowerCase().includes(lower)) {
-          matchesLabel.push(s);
-        } else if (s.ticker.includes(upper)) {
-          containsTicker.push(s);
+      setIsLoading(true);
+      timeoutRef.current = setTimeout(async () => {
+        try {
+          const stocks = await searchStocks(query);
+          // Mapear para o formato que o componente Autocomplete espera
+          const mappedResults = stocks.map(s => {
+            let market: "BR" | "US" | "CRYPTO" = "US";
+            if (s.region === "Brazil" || s.stock.endsWith('.SA')) market = "BR";
+            if (s.type === "CRYPTO") market = "CRYPTO";
+
+            return {
+              ticker: s.stock,
+              label: s.name,
+              market: market
+            };
+          });
+          setResults(mappedResults);
+          setError(null);
+        } catch (err) {
+          setError("Erro ao pesquisar ativos.");
+        } finally {
+          setIsLoading(false);
         }
-      }
-      setResults([...startsWithTicker, ...matchesLabel, ...containsTicker].slice(0, MAX_RESULTS));
+      }, DEBOUNCE_MS);
     },
-    [allStocks]
+    []
   );
 
-  const clearResults = useCallback(() => setResults([]), []);
+  const clearResults = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setResults([]);
+  }, []);
 
   return { results, search, clearResults, isLoading, error };
 }

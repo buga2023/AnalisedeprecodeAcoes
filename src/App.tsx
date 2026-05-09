@@ -67,21 +67,6 @@ function AppContent() {
     setShowSettings(false);
   };
 
-
-  const handleAddStock = async (
-    ticker: string,
-    cost: number,
-    quantity: number,
-    overrides?: { lpa?: number; vpa?: number }
-  ): Promise<boolean> => {
-    const result = await addStock(ticker, cost, quantity, overrides);
-    if (result) {
-      setLastAdded(result);
-      return true;
-    }
-    return false;
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
       {/* Blue gradient glow effect */}
