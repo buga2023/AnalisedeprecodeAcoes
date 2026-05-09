@@ -96,11 +96,6 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
 
     // Buscar insights do Groq
     const fetchInsights = useCallback(async () => {
-        if (!groqKey) {
-            setShowKeyConfig(true);
-            return;
-        }
-
         if (stocks.length === 0) return;
 
         setIsLoading(true);
@@ -108,7 +103,7 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
 
         try {
             const portfolioData = preparePortfolioData();
-            const result = await fetchGroqInsights(groqKey, portfolioData);
+            const result = await fetchGroqInsights(groqKey || undefined, portfolioData);
             setResponse(result);
             setLastAnalyzedTickers(stocks.map((s) => s.ticker).join(","));
         } catch (err) {
@@ -118,10 +113,9 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
         }
     }, [groqKey, stocks, preparePortfolioData]);
 
-    // Auto-fetch na primeira vez que temos key + stocks
+    // Auto-fetch na primeira vez que temos stocks
     useEffect(() => {
         if (
-            groqKey &&
             stocks.length > 0 &&
             !hasAutoFetched.current &&
             !response &&
@@ -130,7 +124,7 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
             hasAutoFetched.current = true;
             fetchInsights();
         }
-    }, [groqKey, stocks, response, isLoading, fetchInsights]);
+    }, [stocks, response, isLoading, fetchInsights]);
 
     const handleSaveKey = () => {
         const trimmed = keyInput.trim();
@@ -170,21 +164,19 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                         </span>
                     </h2>
                     <div className="flex items-center gap-2">
-                        {groqKey && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary"
-                                onClick={fetchInsights}
-                                disabled={isLoading}
-                                title="Atualizar insights"
-                            >
-                                <RefreshCw
-                                    className={`h-3.5 w-3.5 mr-1 ${isLoading ? "animate-spin" : ""}`}
-                                />
-                                {isLoading ? "Analisando..." : "Atualizar"}
-                            </Button>
-                        )}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary"
+                            onClick={fetchInsights}
+                            disabled={isLoading}
+                            title="Atualizar insights"
+                        >
+                            <RefreshCw
+                                className={`h-3.5 w-3.5 mr-1 ${isLoading ? "animate-spin" : ""}`}
+                            />
+                            {isLoading ? "Analisando..." : "Atualizar"}
+                        </Button>
                         <Button
                             variant="ghost"
                             size="icon"
@@ -194,11 +186,11 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                         >
                             <Key className="h-3.5 w-3.5" />
                         </Button>
-                        {groqKey && !isLoading && (
+                        {!isLoading && (
                             <div className="flex items-center gap-1.5">
-                                <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                                <span className={`size-2 rounded-full ${groqKey ? 'bg-emerald-400' : 'bg-primary/50'} animate-pulse`} />
                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                    Conectado
+                                    {groqKey ? 'Chave Pessoal' : 'Chave do Servidor'}
                                 </span>
                             </div>
                         )}
@@ -262,25 +254,14 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                     </div>
                 )}
 
-                {/* Estado: Sem API Key */}
-                {!groqKey && !showKeyConfig && (
-                    <div className="text-center py-8">
-                        <Sparkles className="h-10 w-10 mx-auto mb-3 text-primary/30" />
-                        <h3 className="text-sm font-bold text-white mb-1">
-                            Configure a IA para gerar insights
-                        </h3>
-                        <p className="text-xs text-muted-foreground mb-4 max-w-md mx-auto">
-                            Conecte sua chave gratuita do Groq para receber analises
-                            inteligentes e personalizadas do seu portfolio em tempo real,
-                            com velocidade ultra-rapida via Llama 3.3 70B.
+                {/* Info sobre Chave da API */}
+                {!groqKey && !showKeyConfig && !response && !isLoading && (
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/5 border border-primary/20 mb-4">
+                        <Key className="h-4 w-4 text-primary shrink-0" />
+                        <p className="text-[10px] text-muted-foreground leading-tight">
+                            Usando a <span className="text-primary font-bold">Chave Global do Servidor</span>. 
+                            Você pode configurar sua própria chave clicando no ícone de chave acima para ter limites exclusivos.
                         </p>
-                        <Button
-                            onClick={() => setShowKeyConfig(true)}
-                            className="bg-primary hover:bg-blue-600 font-bold text-sm"
-                        >
-                            <Key className="h-4 w-4 mr-2" />
-                            Configurar API Groq
-                        </Button>
                     </div>
                 )}
 
@@ -308,15 +289,28 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                             <p className="text-sm font-bold text-rose-400">Erro na analise</p>
                         </div>
                         <p className="text-xs text-rose-400/80 mb-3">{error}</p>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs"
-                            onClick={fetchInsights}
-                        >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            Tentar novamente
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs"
+                              onClick={fetchInsights}
+                          >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Tentar novamente
+                          </Button>
+                          {!groqKey && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-primary/30 text-primary hover:bg-primary/10 text-xs"
+                                onClick={() => setShowKeyConfig(true)}
+                            >
+                                <Key className="h-3 w-3 mr-1" />
+                                Configurar minha chave
+                            </Button>
+                          )}
+                        </div>
                     </div>
                 )}
 

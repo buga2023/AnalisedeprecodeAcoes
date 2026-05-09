@@ -101,9 +101,7 @@ REGRAS DE ANALISE:
 Responda SOMENTE com o JSON, nada mais.`;
 }
 
-export async function fetchGroqInsights(apiKey: string, stocks: PortfolioData[]): Promise<GroqResponse> {
-    
-
+export async function fetchGroqInsights(apiKey: string | undefined, stocks: PortfolioData[]): Promise<GroqResponse> {
     if (stocks.length === 0) {
         throw new Error("Nenhum ativo no portfolio para analisar.");
     }
@@ -114,8 +112,7 @@ export async function fetchGroqInsights(apiKey: string, stocks: PortfolioData[])
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            
+            ...(apiKey ? { "x-api-key": apiKey } : {}),
         },
         body: JSON.stringify({
             model: GROQ_MODEL,
@@ -184,4 +181,3 @@ export async function fetchGroqInsights(apiKey: string, stocks: PortfolioData[])
         throw new Error("Erro ao interpretar resposta da IA. Tente novamente.");
     }
 }
-

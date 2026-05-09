@@ -18,6 +18,60 @@ export const handler: Handler = async (event: HandlerEvent) => {
     return { statusCode: 204, headers: corsHeaders, body: "" };
   }
 
+  const token = event.queryStringParameters?.token || process.env.BRAPI_TOKEN;
+
+  // Se tivermos token, tentamos usar a Brapi para dados mais estáveis
+  if (token) {
+    try {
+      // 1. Buscar Moedas
+      const currencyUrl = `https://brapi.dev/api/v2/currency?currency=USD-BRL,EUR-BRL,BRL-USD&token=${token}`;
+      const cryptoUrl = `https://brapi.dev/api/v2/crypto?coin=BTC,ETH&currency=BRL&token=${token}`;
+
+      const [resCurr, resCrypto] = await Promise.all([
+        fetch(currencyUrl),
+        fetch(cryptoUrl)
+      ]);
+
+      if (resCurr.ok && resCrypto.ok) {
+        const dataCurr = await resCurr.json();
+        const dataCrypto = await resCrypto.json();
+
+        // Mapear para o formato que o frontend espera (formato da AwesomeAPI)
+        const mappedData: any = {};
+        
+        dataCurr.currency.forEach((c: any) => {
+          const key = `${c.fromCurrency}${c.toCurrency}`;
+          mappedData[key] = {
+            bid: c.bidPrice,
+            pctChange: c.variationPercentage
+          };
+        });
+
+        dataCrypto.coins.forEach((c: any) => {
+          const key = `${c.coin}BRL`;
+          mappedData[key] = {
+            bid: c.regularMarketPrice.toString(),
+            pctChange: c.regularMarketChangePercent.toString()
+          };
+        });
+
+        // Fallback para Ouro/Prata da AwesomeAPI (se ainda funcionar) ou valores zerados
+        // Brapi não tem XAU/XAG fácil no plano free
+        mappedData['XAUUSD'] = { bid: '0', pctChange: '0' };
+        mappedData['XAGUSD'] = { bid: '0', pctChange: '0' };
+
+        return {
+          statusCode: 200,
+          headers: { ...corsHeaders, "X-Source": "Brapi" },
+          body: JSON.stringify(mappedData),
+        };
+      }
+    } catch (e) {
+      console.warn("Erro ao buscar na Brapi, tentando AwesomeAPI:", e);
+    }
+  }
+
+  // Fallback para AwesomeAPI (lógica original com cache)
   // Verificar cache
   const now = Date.now();
   if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
@@ -32,7 +86,6 @@ export const handler: Handler = async (event: HandlerEvent) => {
   }
 
   try {
-    // Lista simplificada e garantida de funcionar na AwesomeAPI
     const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
     const apiUrl = `https://economia.awesomeapi.com.br/last/${TICKERS}`;
 

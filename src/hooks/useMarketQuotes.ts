@@ -9,6 +9,7 @@ export interface MarketQuote {
 }
 
 const API_URL = '/api/market';
+const TOKEN_KEY = "stocks-ai-brapi-token";
 const INITIAL_POLL_INTERVAL = 300000; // 5 minutes
 const MAX_POLL_INTERVAL = 900000; // 15 minutes
 const BACKOFF_MULTIPLIER = 1.5;
@@ -32,7 +33,9 @@ export function useMarketQuotes() {
             setIsLoading(true);
             setError(null);
             
-            const response = await fetch(API_URL);
+            const token = localStorage.getItem(TOKEN_KEY) || '';
+            const url = token ? `${API_URL}?token=${token}` : API_URL;
+            const response = await fetch(url);
 
             if (!response.ok) {
                 if (response.status === 429) {

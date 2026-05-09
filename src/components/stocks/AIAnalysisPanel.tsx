@@ -92,7 +92,7 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
   const groqKey = getStoredGroqKey();
 
   const executarAnalise = async () => {
-    if (!groqKey) return;
+    setStatus("loading-scraping");
 
     setStatus("loading-scraping");
     setErro("");
@@ -120,7 +120,7 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
         ticker,
         nomeEmpresa,
         dados,
-        groqKey
+        groqKey || undefined
       );
 
       clearTimeout(timeoutId);
@@ -134,32 +134,34 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
     }
   };
 
-  // ─── Estado: Sem API Key ───
-  if (!groqKey) {
+  // Info sobre chave (opcional agora)
+  const renderKeyInfo = () => {
+    if (groqKey) return null;
     return (
-      <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
-        <Key className="h-4 w-4 text-amber-400 shrink-0" />
-        <p className="text-xs text-amber-400/80">
-          Configure sua chave da Groq API no painel de{" "}
-          <span className="font-bold text-amber-400">Insights de IA</span> acima
-          para usar esta funcionalidade.
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10 mb-2">
+        <Key className="h-3 w-3 text-primary/60" />
+        <p className="text-[10px] text-muted-foreground">
+          Usando chave global do servidor.
         </p>
       </div>
     );
-  }
+  };
 
   // ─── Estado: Idle ───
   if (status === "idle") {
     return (
-      <Button
-        onClick={executarAnalise}
-        variant="outline"
-        size="sm"
-        className="h-8 gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 text-xs font-bold transition-all"
-      >
-        <Bot className="h-3.5 w-3.5" />
-        Analisar com IA
-      </Button>
+      <div className="flex flex-col gap-2">
+        {renderKeyInfo()}
+        <Button
+          onClick={executarAnalise}
+          variant="outline"
+          size="sm"
+          className="h-8 gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 text-xs font-bold transition-all w-fit"
+        >
+          <Bot className="h-3.5 w-3.5" />
+          Analisar com IA
+        </Button>
+      </div>
     );
   }
 
