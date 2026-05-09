@@ -12,7 +12,7 @@
 
 import { coletarDadosRI, type DadosRI } from "./scraping";
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_API_URL = "/api/groq";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 /** Resultado estruturado da analise da IA */
@@ -43,12 +43,7 @@ export interface DadosQuantitativos {
 /**
  * Analisa uma acao individualmente usando dados de scraping + IA
  */
-export async function analisarAcaoComIA(
-  ticker: string,
-  nomeEmpresa: string,
-  dados: DadosQuantitativos,
-  groqToken: string
-): Promise<AnaliseIA> {
+export async function analisarAcaoComIA(ticker: string, nomeEmpresa: string, dados: DadosQuantitativos): Promise<AnaliseIA> {
   // 1. Coletar dados via scraping (pode retornar vazio — nao bloqueia)
   const dadosRI: DadosRI = await coletarDadosRI(ticker);
 
@@ -103,7 +98,7 @@ Regras:
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${groqToken}`,
+      
     },
     body: JSON.stringify({
       model: GROQ_MODEL,
@@ -186,3 +181,4 @@ Regras:
     throw new Error("Resposta da IA nao esta em formato JSON valido. Tente novamente.");
   }
 }
+
