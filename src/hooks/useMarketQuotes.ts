@@ -19,7 +19,7 @@ export function useMarketQuotes() {
     const [error, setError] = useState<string | null>(null);
     
     const pollIntervalRef = useRef(INITIAL_POLL_INTERVAL);
-    const intervalRef = useRef<ReturnType<typeof setInterval>>();
+    const intervalRef = useRef<number | undefined>();
     const fetchInProgressRef = useRef(false);
     const lastSuccessfulFetchRef = useRef<number>(0);
 
