@@ -1,20 +1,42 @@
 [build]
   command = "npm run build"
   publish = "dist"
-  functions = "netlify/functions"
+
+[functions]
+  directory = "netlify/functions"
+  node_version = "20"
 
 [dev]
   command = "npm run dev"
   port = 8888
   targetPort = 5173
 
-# Redirecionar /api/* para as Netlify Functions
+# 1. Prioridade Máxima: Redirecionar chamadas de API para as Functions
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  from = "/api/brapi"
+  to = "/.netlify/functions/brapi"
   status = 200
+  force = true
 
-# SPA fallback — todas as rotas vão para o index.html
+[[redirects]]
+  from = "/api/market"
+  to = "/.netlify/functions/market"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/groq"
+  to = "/.netlify/functions/groq"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/scrape"
+  to = "/.netlify/functions/scrape"
+  status = 200
+  force = true
+
+# 2. SPA fallback — todas as outras rotas vão para o index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
