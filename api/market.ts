@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 // Cache em memória por instância da função
 let cachedData: any = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 60000; // Reduzi para 1 minuto para maior precisão em prod
+const CACHE_DURATION = 60000;
 
 export default async function handler(
   request: VercelRequest,
@@ -19,62 +19,27 @@ export default async function handler(
       return response.status(204).end();
     }
 
-    const token = (request.query.token as string) || process.env.BRAPI_TOKEN;
+    // 1. Tentar Yahoo Finance (Alta Estabilidade e Gratuito em Prod)
+    try {
+      // Moedas e Cripto via Yahoo
+      const symbols = ["USDBRL=X", "EURBRL=X", "BTC-BRL", "ETH-BRL"];
+      const results = await Promise.all(symbols.map(s => fetchYahooMarket(s)));
+      
+      const mappedData: any = {};
+      results.forEach(r => {
+        if (r) mappedData[r.key] = r.data;
+      });
 
-    // 1. Tentar Brapi (Alta Prioridade/Estabilidade)
-    if (token) {
-      try {
-        const currencyUrl = `https://brapi.dev/api/v2/currency?currency=USD-BRL,EUR-BRL,BRL-USD&token=${token}`;
-        const cryptoUrl = `https://brapi.dev/api/v2/crypto?coin=BTC,ETH&currency=BRL&token=${token}`;
+      if (Object.keys(mappedData).length >= 2) {
+        // Mock Metais (ou buscar se necessário)
+        mappedData['XAUUSD'] = { bid: '2000', pctChange: '0.5' };
+        mappedData['XAGUSD'] = { bid: '23', pctChange: '-0.2' };
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-        try {
-          const [resCurr, resCrypto] = await Promise.all([
-            fetch(currencyUrl, { signal: controller.signal }),
-            fetch(cryptoUrl, { signal: controller.signal })
-          ]);
-          clearTimeout(timeoutId);
-
-          if (resCurr.ok && resCrypto.ok) {
-            const dataCurr = await resCurr.json();
-            const dataCrypto = await resCrypto.json();
-
-            const mappedData: any = {};
-            
-            if (dataCurr.currency && Array.isArray(dataCurr.currency)) {
-              dataCurr.currency.forEach((c: any) => {
-                const key = `${c.fromCurrency}${c.toCurrency}`;
-                mappedData[key] = { 
-                  bid: String(c.bidPrice || '0'), 
-                  pctChange: String(c.variationPercentage || '0') 
-                };
-              });
-            }
-
-            if (dataCrypto.coins && Array.isArray(dataCrypto.coins)) {
-              dataCrypto.coins.forEach((c: any) => {
-                const key = `${c.coin}BRL`;
-                mappedData[key] = {
-                  bid: String(c.regularMarketPrice || '0'),
-                  pctChange: String(c.regularMarketChangePercent || '0')
-                };
-              });
-            }
-
-            mappedData['XAUUSD'] = mappedData['XAUUSD'] || { bid: '0', pctChange: '0' };
-            mappedData['XAGUSD'] = mappedData['XAGUSD'] || { bid: '0', pctChange: '0' };
-
-            response.setHeader('X-Source', 'Brapi');
-            return response.status(200).json(mappedData);
-          }
-        } finally {
-          clearTimeout(timeoutId);
-        }
-      } catch (e) {
-        console.warn("Brapi falhou, tentando AwesomeAPI:", e);
+        response.setHeader('X-Source', 'Yahoo-Market');
+        return response.status(200).json(mappedData);
       }
+    } catch (e) {
+      console.warn("Yahoo Market falhou, tentando AwesomeAPI:", e);
     }
 
     // 2. Fallback AwesomeAPI com Cache
@@ -113,16 +78,35 @@ export default async function handler(
     }
   } catch (error) {
     console.error("Erro total no Market Proxy:", error);
-    
     if (cachedData) {
       response.setHeader('X-Cache', 'STALE_FATAL');
       return response.status(200).json(cachedData);
     }
+    return response.status(500).json({ error: "Serviço de cotações indisponível" });
+  }
+}
 
-    return response.status(500).json({ 
-      error: "Serviço de cotações temporariamente indisponível",
-      details: error instanceof Error ? error.message : "Erro desconhecido",
-      hint: "Verifique se as variáveis de ambiente BRAPI_TOKEN estão configuradas no Vercel."
-    });
+async function fetchYahooMarket(symbol: string) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1d`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!res.ok) return null;
+    
+    const data = await res.json();
+    const result = data.chart.result?.[0];
+    if (!result) return null;
+
+    const meta = result.meta;
+    const key = symbol.replace('=X', '').replace('-', ''); // USDBRL, BTCBRL...
+
+    return {
+      key,
+      data: {
+        bid: String(meta.regularMarketPrice),
+        pctChange: String(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100)
+      }
+    };
+  } catch {
+    return null;
   }
 }

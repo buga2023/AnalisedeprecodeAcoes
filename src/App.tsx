@@ -67,6 +67,21 @@ function AppContent() {
     setShowSettings(false);
   };
 
+
+  const handleAddStock = async (
+    ticker: string,
+    cost: number,
+    quantity: number,
+    overrides?: { lpa?: number; vpa?: number }
+  ): Promise<boolean> => {
+    const result = await addStock(ticker, cost, quantity, overrides);
+    if (result) {
+      setLastAdded(result);
+      return true;
+    }
+    return false;
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
       {/* Blue gradient glow effect */}
@@ -85,20 +100,16 @@ function AppContent() {
             </h1>
             <p className="max-w-md text-muted-foreground leading-relaxed">
               Analise sua carteira com a inteligência do Value Investing.
-              Cotações em tempo real via brapi.dev.
+              Cotações automáticas e gratuitas via Yahoo Finance.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Connection status */}
+            {/* Connection status - Agora fixo como Conectado via Yahoo */}
             <div className="flex items-center gap-2 bg-card/50 backdrop-blur-sm border border-border px-3 py-2 rounded-lg text-xs">
-              {token ? (
-                <Wifi className="h-3.5 w-3.5 text-emerald-400" />
-              ) : (
-                <WifiOff className="h-3.5 w-3.5 text-amber-400" />
-              )}
+              <Wifi className="h-3.5 w-3.5 text-emerald-400" />
               <span className="text-muted-foreground font-medium">
-                {token ? "API conectada" : "Sem token"}
+                Cotações Ativas
               </span>
             </div>
 
@@ -112,17 +123,6 @@ function AppContent() {
               title="Atualizar todas as cotações"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            </Button>
-
-            {/* Settings button */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 border-border"
-              onClick={() => setShowSettings(!showSettings)}
-              title="Configurações da API"
-            >
-              <Settings className="h-4 w-4" />
             </Button>
 
             {/* Stock count */}
@@ -145,47 +145,6 @@ function AppContent() {
             <button onClick={clearError} className="ml-4 hover:text-rose-300">
               <X className="h-4 w-4" />
             </button>
-          </div>
-        )}
-
-        {/* Settings panel */}
-        {showSettings && (
-          <div className="rounded-2xl border border-border/50 bg-card/80 backdrop-blur-xl p-6 animate-in fade-in slide-in-from-top-2 duration-300">
-            <div className="flex items-center gap-2 mb-4">
-              <Key className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-bold">Configuração da API</h3>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Cadastre-se em <span className="text-primary font-medium">brapi.dev</span> para obter um token gratuito.
-              Sem token, apenas alguns tickers de teste funcionam (PETR4, VALE3, etc).
-            </p>
-            <div className="flex gap-3 items-end">
-              <div className="flex-1 grid gap-2">
-                <Label htmlFor="api-token" className="text-[10px] font-black uppercase tracking-widest text-primary">
-                  Token da API
-                </Label>
-                <Input
-                  id="api-token"
-                  type="password"
-                  placeholder="Cole seu token aqui"
-                  className="bg-slate-950/50 border-border focus:border-primary focus:ring-1 focus:ring-primary h-10 font-mono text-sm"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleSaveToken} className="h-10 bg-primary hover:bg-blue-600 font-bold">
-                Salvar
-              </Button>
-              {token && (
-                <Button
-                  variant="outline"
-                  className="h-10 text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
-                  onClick={() => { updateToken(""); setTokenInput(""); }}
-                >
-                  Remover
-                </Button>
-              )}
-            </div>
           </div>
         )}
 

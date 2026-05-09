@@ -33,6 +33,41 @@ interface BrapiQuoteResponse {
   requestedAt: string;
   took: string;
 }
+const BRAPI_PROXY_URL = "/api/brapi";
+
+export interface BrapiFinancialData {
+  returnOnEquity?: number;
+  totalDebt?: number;
+  ebitda?: number;
+  debtToEquity?: number;
+  currentRatio?: number;
+  freeCashflow?: number;
+  totalRevenue?: number;
+  profitMargins?: number;
+}
+
+export interface BrapiQuoteResult {
+  symbol: string;
+  shortName: string;
+  longName: string;
+  currency: string;
+  regularMarketPrice: number;
+  regularMarketChange: number;
+  regularMarketChangePercent: number;
+  regularMarketTime: string;
+  earningsPerShare: number;
+  priceEarnings: number;
+  bookValue?: number;
+  dividendYield?: number;
+  enterpriseValue?: number;
+  financialData?: BrapiFinancialData;
+}
+
+interface BrapiQuoteResponse {
+  results: BrapiQuoteResult[];
+  requestedAt: string;
+  took: string;
+}
 
 export interface BrapiError {
   message: string;
@@ -40,13 +75,10 @@ export interface BrapiError {
 }
 
 export async function fetchStockQuote(
-  ticker: string,
-  token?: string
+  ticker: string
 ): Promise<BrapiQuoteResult> {
-  const url = new URL(BRAPI_PROXY_URL, window.location.origin); url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
-  if (token) {
-    url.searchParams.set("token", token);
-  }
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin); 
+  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
   url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
   const response = await fetch(url.toString());
@@ -58,22 +90,12 @@ export async function fetchStockQuote(
     if (response.status === 429) {
       throw new Error("Limite de requisições atingido. Tente novamente em alguns minutos.");
     }
-    if (response.status === 403 || response.status === 401) {
-      throw new Error(
-        `Token necessário para buscar "${ticker}". Configure seu token da brapi nas configurações.`
-      );
-    }
     throw new Error(`Erro ao buscar cotação: ${response.status}`);
   }
 
   const data: BrapiQuoteResponse = await response.json();
 
   if (!data.results || data.results.length === 0) {
-    if (!token) {
-      throw new Error(
-        `Nenhum resultado para "${ticker}". Sem token, apenas PETR4, VALE3, MGLU3 e ITUB4 estão disponíveis. Configure um token nas configurações para acessar todas as ações.`
-      );
-    }
     throw new Error(`Nenhum resultado encontrado para "${ticker}".`);
   }
 
@@ -223,16 +245,13 @@ const RANGE_INTERVAL_MAP: Record<HistoryRange, string> = {
 
 export async function fetchStockHistory(
   ticker: string,
-  range: HistoryRange,
-  token?: string
+  range: HistoryRange
 ): Promise<HistoricalDataPoint[]> {
   const interval = RANGE_INTERVAL_MAP[range];
-  const url = new URL(BRAPI_PROXY_URL, window.location.origin); url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin); 
+  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
   url.searchParams.set("range", range);
   url.searchParams.set("interval", interval);
-  if (token) {
-    url.searchParams.set("token", token);
-  }
 
   const response = await fetch(url.toString());
 
@@ -256,16 +275,13 @@ export async function fetchStockHistory(
 }
 
 export async function fetchMultipleQuotes(
-  tickers: string[],
-  token?: string
+  tickers: string[]
 ): Promise<BrapiQuoteResult[]> {
   if (tickers.length === 0) return [];
 
   const tickerString = tickers.map((t) => t.toUpperCase()).join(",");
-  const url = new URL(BRAPI_PROXY_URL, window.location.origin); url.searchParams.set("endpoint", `/quote/${encodeURIComponent(tickerString)}`);
-  if (token) {
-    url.searchParams.set("token", token);
-  }
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin); 
+  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(tickerString)}`);
   url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
   const response = await fetch(url.toString());
@@ -285,4 +301,3 @@ export async function fetchMultipleQuotes(
 
   return data.results;
 }
-

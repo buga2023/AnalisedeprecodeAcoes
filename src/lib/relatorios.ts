@@ -69,15 +69,12 @@ function buildTtmRelatorio(result: BrapiReportResult, symbol: string): Relatorio
 
 export async function fetchRelatorios(
   ticker: string,
-  token?: string,
   signal?: AbortSignal
 ): Promise<Relatorio[]> {
   const symbol = ticker.trim().toUpperCase();
-  const url = new URL(`${BRAPI_BASE_URL}/quote/${encodeURIComponent(symbol)}`);
-
-  if (token) {
-    url.searchParams.set("token", token);
-  }
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin);
+  
+  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(symbol)}`);
   url.searchParams.set("modules", "incomeStatementHistoryQuarterly,financialData");
 
   try {

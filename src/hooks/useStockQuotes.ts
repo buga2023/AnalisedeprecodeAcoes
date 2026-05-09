@@ -103,7 +103,6 @@ export function setStoredToken(token: string) {
 
 export function useStockQuotes() {
   const [stocks, setStocks] = useState<Stock[]>(loadStocksFromStorage);
-  const [token, setToken] = useState(getStoredToken);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,11 +112,6 @@ export function useStockQuotes() {
     saveStocksToStorage(stocks);
   }, [stocks]);
 
-  const updateToken = useCallback((newToken: string) => {
-    setStoredToken(newToken);
-    setToken(newToken);
-  }, []);
-
   const refreshAll = useCallback(async () => {
     if (stocks.length === 0) return;
 
@@ -126,7 +120,7 @@ export function useStockQuotes() {
 
     try {
       const tickers = stocks.map((s) => s.ticker);
-      const quotes = await fetchMultipleQuotes(tickers, token || undefined);
+      const quotes = await fetchMultipleQuotes(tickers);
 
       setStocks((prev) => {
         const quoteMap = new Map(quotes.map((q) => [q.symbol, q]));
@@ -141,13 +135,13 @@ export function useStockQuotes() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [stocks, token]);
+  }, [stocks]);
 
   const refreshStock = useCallback(
     async (ticker: string) => {
       setError(null);
       try {
-        const quote = await fetchStockQuote(ticker, token || undefined);
+        const quote = await fetchStockQuote(ticker);
         setStocks((prev) =>
           prev.map((s) =>
             s.ticker === ticker ? mapQuoteToStock(quote, s.cost, s.quantity, s.isFavorite) : s
@@ -158,7 +152,7 @@ export function useStockQuotes() {
         setError(err instanceof Error ? err.message : "Erro ao atualizar cotacao.");
       }
     },
-    [token]
+    []
   );
 
   const addStock = useCallback(
@@ -170,7 +164,7 @@ export function useStockQuotes() {
     ): Promise<Stock | null> => {
       setError(null);
       try {
-        const quote = await fetchStockQuote(ticker, token || undefined);
+        const quote = await fetchStockQuote(ticker);
         const newStock = mapQuoteToStock(quote, cost || 0, quantity || 0);
 
         if (overrides?.lpa !== undefined) newStock.lpa = overrides.lpa;
@@ -195,7 +189,7 @@ export function useStockQuotes() {
         return null;
       }
     },
-    [token]
+    []
   );
 
   const removeStock = useCallback((ticker: string) => {
@@ -226,8 +220,6 @@ export function useStockQuotes() {
 
   return {
     stocks,
-    token,
-    updateToken,
     isRefreshing,
     lastRefreshed,
     error,

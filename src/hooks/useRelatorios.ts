@@ -29,7 +29,7 @@ function isFresh(entry?: CacheEntry) {
   return Boolean(entry && Date.now() - entry.timestamp < CACHE_TTL_MS);
 }
 
-export function useRelatorios(tickers: string[], token?: string) {
+export function useRelatorios(tickers: string[]) {
   const [relatorios, setRelatorios] = useState<Relatorio[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export function useRelatorios(tickers: string[], token?: string) {
 
       const fetched = await Promise.all(
         missing.map(async (ticker) => {
-          const items = await fetchRelatorios(ticker, token, signal);
+          const items = await fetchRelatorios(ticker, signal);
           cache[ticker] = { timestamp: Date.now(), relatorios: items };
           return items;
         })
@@ -82,7 +82,7 @@ export function useRelatorios(tickers: string[], token?: string) {
         setLoading(false);
       }
     }
-  }, [tickersKey, token]);
+  }, [tickersKey]);
 
   useEffect(() => {
     abortRef.current?.abort();

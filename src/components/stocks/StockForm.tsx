@@ -14,7 +14,6 @@ import type { Stock } from "@/types/stock";
 interface StockFormProps {
     onAddStock: (ticker: string, cost: number, quantity: number, overrides?: { lpa?: number; vpa?: number }) => Promise<boolean>;
     lastAdded?: Stock | null;
-    token?: string;
 }
 
 interface FetchedData {

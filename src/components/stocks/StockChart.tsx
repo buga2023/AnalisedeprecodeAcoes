@@ -8,7 +8,6 @@ import type { HistoricalDataPoint, HistoryRange } from "@/lib/api";
 
 interface StockChartProps {
     ticker: string;
-    token?: string;
     onClose: () => void;
 }
 
