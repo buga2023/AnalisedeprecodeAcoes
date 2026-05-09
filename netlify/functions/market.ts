@@ -1,5 +1,10 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
 
+// Cache simples em memória (persiste enquanto a função estiver quente)
+let cachedData: any = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 120000; // 2 minutos
+
 export const handler: Handler = async (event: HandlerEvent) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -11,6 +16,19 @@ export const handler: Handler = async (event: HandlerEvent) => {
   // Responder ao Preflight de CORS
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: corsHeaders, body: "" };
+  }
+
+  // Verificar cache
+  const now = Date.now();
+  if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
+    return {
+      statusCode: 200,
+      headers: {
+        ...corsHeaders,
+        "X-Cache": "HIT"
+      },
+      body: JSON.stringify(cachedData),
+    };
   }
 
   try {
@@ -30,9 +48,16 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
     const data = await res.json();
 
+    // Atualizar cache
+    cachedData = data;
+    lastFetchTime = Date.now();
+
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: {
+        ...corsHeaders,
+        "X-Cache": "MISS"
+      },
       body: JSON.stringify(data),
     };
   } catch (error) {

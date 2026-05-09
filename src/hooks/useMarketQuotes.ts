@@ -9,8 +9,8 @@ export interface MarketQuote {
 }
 
 const API_URL = '/api/market';
-const INITIAL_POLL_INTERVAL = 120000; // 2 minutes
-const MAX_POLL_INTERVAL = 600000; // 10 minutes
+const INITIAL_POLL_INTERVAL = 300000; // 5 minutes
+const MAX_POLL_INTERVAL = 900000; // 15 minutes
 const BACKOFF_MULTIPLIER = 1.5;
 
 export function useMarketQuotes() {
@@ -19,7 +19,7 @@ export function useMarketQuotes() {
     const [error, setError] = useState<string | null>(null);
     
     const pollIntervalRef = useRef(INITIAL_POLL_INTERVAL);
-    const intervalRef = useRef<number | undefined>(undefined);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const fetchInProgressRef = useRef(false);
     const lastSuccessfulFetchRef = useRef<number>(0);
 
@@ -36,12 +36,12 @@ export function useMarketQuotes() {
 
             if (!response.ok) {
                 if (response.status === 429) {
-                    // Rate limited - increase backoff and wait
+                    // Rate limited - increase backoff
                     pollIntervalRef.current = Math.min(
                         pollIntervalRef.current * BACKOFF_MULTIPLIER,
                         MAX_POLL_INTERVAL
                     );
-                    throw new Error('Servidor está sobrecarregado. Tentaremos novamente em alguns minutos.');
+                    throw new Error('Limite de requisições atingido. Tentando novamente mais tarde.');
                 }
                 throw new Error('Falha ao buscar cotações do mercado');
             }
@@ -112,23 +112,23 @@ export function useMarketQuotes() {
         } finally {
             setIsLoading(false);
             fetchInProgressRef.current = false;
+            // Schedule next fetch regardless of success/fail (using updated interval)
+            scheduleNextFetch();
         }
+    };
+
+    const scheduleNextFetch = () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+            fetchQuotes(false);
+        }, pollIntervalRef.current);
     };
 
     useEffect(() => {
         fetchQuotes();
         
-        const scheduleNextFetch = () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            intervalRef.current = setInterval(() => {
-                fetchQuotes(false);
-            }, pollIntervalRef.current);
-        };
-        
-        scheduleNextFetch();
-        
         return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
             fetchInProgressRef.current = false;
         };
     }, []);
