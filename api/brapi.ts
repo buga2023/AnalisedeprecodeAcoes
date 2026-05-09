@@ -19,7 +19,8 @@ export default async function handler(
   }
 
   const serverToken = process.env.BRAPI_TOKEN;
-  const { endpoint, ...query } = request.query;
+  const endpoint = Array.isArray(request.query.endpoint) ? request.query.endpoint[0] : request.query.endpoint;
+  const { endpoint: _, ...query } = request.query;
 
   if (!endpoint) {
     return response.status(400).json({ error: "Parâmetro 'endpoint' é obrigatório." });
