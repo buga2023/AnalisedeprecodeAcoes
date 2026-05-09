@@ -78,9 +78,9 @@ export function RelatoriosPanel({ stocks, relatorios, loading, error, onRefresh 
                     {rows.map((relatorio) => (
                       <div
                         key={`${relatorio.ticker}-${relatorio.periodo}-${relatorio.dataFim}`}
-                        className="grid grid-cols-[80px_1fr_1fr_80px] items-center gap-3 border-b border-border/20 px-4 py-3 last:border-b-0"
+                        className="grid grid-cols-[minmax(140px,auto)_1fr_1fr_80px] items-center gap-3 border-b border-border/20 px-4 py-3 last:border-b-0"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <span className="font-black text-white">{relatorio.periodo}</span>
                           {isNovo(relatorio.dataFim) && (
                             <Badge className="bg-emerald-500/10 text-emerald-300">NOVO</Badge>
