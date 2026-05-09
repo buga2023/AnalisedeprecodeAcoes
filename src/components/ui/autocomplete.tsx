@@ -42,13 +42,6 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
   const showDropdown = isOpen && suggestions.length > 0 && value.length >= 1;
 
   useEffect(() => {
-    if (suggestions.length > 0 && value.length >= 1) {
-      setIsOpen(true);
-      setActiveIndex(-1);
-    }
-  }, [suggestions, value]);
-
-  useEffect(() => {
     if (activeIndex >= 0 && listRef.current) {
       const item = listRef.current.children[activeIndex] as HTMLElement;
       item?.scrollIntoView({ block: "nearest" });
@@ -109,7 +102,11 @@ export const Autocomplete: React.FC<AutocompleteProps> = ({
         id={id}
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setIsOpen(true);
+          setActiveIndex(-1);
+        }}
         onFocus={() => {
           if (suggestions.length > 0 && value.length >= 1) setIsOpen(true);
         }}

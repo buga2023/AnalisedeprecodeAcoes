@@ -9,8 +9,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, ArrowRight, RefreshCw, Trash2, Clock, LineChart, ArrowUpDown, ArrowUp, ArrowDown, Filter, Columns } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowRight, RefreshCw, Trash2, Clock, LineChart, ArrowUpDown, ArrowUp, ArrowDown, Filter, Columns, Bot } from "lucide-react";
 import { calculateGrahamValue, calculateROI, calculateMarginOfSafety, getValuationStatus } from "@/lib/calculators";
+import { AIAnalysisPanel } from "@/components/stocks/AIAnalysisPanel";
 import type { Stock } from "@/types/stock";
 
 interface StocksTableProps {
@@ -50,11 +51,48 @@ const TOGGLEABLE_COLS: { key: ToggleableCol; label: string }[] = [
     { key: "ebitdaMargin", label: "Mg. EBITDA" },
 ];
 
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
+    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />;
+    return sortDir === "asc"
+        ? <ArrowUp className="h-3 w-3 ml-1 text-primary" />
+        : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+}
+
+function ThButton({
+    col,
+    children,
+    className,
+    sortKey,
+    sortDir,
+    onSort,
+}: {
+    col: SortKey;
+    children: React.ReactNode;
+    className?: string;
+    sortKey: SortKey;
+    sortDir: SortDir;
+    onSort: (key: SortKey) => void;
+}) {
+    return (
+        <TableHead
+            className={`text-[10px] font-black uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-primary transition-colors select-none ${className ?? ""}`}
+            onClick={() => onSort(col)}
+        >
+            <div className="flex items-center">
+                {children}
+                <SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
+            </div>
+        </TableHead>
+    );
+}
+
 export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock, onRemoveStock, onShowChart }) => {
     const [sortKey, setSortKey] = useState<SortKey>("ticker");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
     const [filter, setFilter] = useState<ValuationFilter>("all");
     const [visibleCols, setVisibleCols] = useState<Set<ToggleableCol>>(new Set(["pl", "pvp", "dividendYield"]));
+    // Ticker com painel de analise IA expandido (null = nenhum)
+    const [expandedAI, setExpandedAI] = useState<string | null>(null);
 
     const toggleCol = (col: ToggleableCol) => {
         setVisibleCols((prev) => {
@@ -72,13 +110,6 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
             setSortKey(key);
             setSortDir(key === "ticker" ? "asc" : "desc");
         }
-    };
-
-    const SortIcon = ({ col }: { col: SortKey }) => {
-        if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />;
-        return sortDir === "asc"
-            ? <ArrowUp className="h-3 w-3 ml-1 text-primary" />
-            : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
     };
 
     // Enrich stocks with computed values for sorting
@@ -134,19 +165,8 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
         { label: "Sobrevalorizadas", value: "Sobrevalorizada", className: "text-rose-400" },
     ];
 
-    const ThButton: React.FC<{ col: SortKey; children: React.ReactNode; className?: string }> = ({ col, children, className }) => (
-        <TableHead
-            className={`text-[10px] font-black uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-primary transition-colors select-none ${className ?? ""}`}
-            onClick={() => handleSort(col)}
-        >
-            <div className="flex items-center">
-                {children}
-                <SortIcon col={col} />
-            </div>
-        </TableHead>
-    );
-
     const totalColSpan = 11 + visibleCols.size;
+    const sortProps = { sortKey, sortDir, onSort: handleSort };
 
     return (
         <div className="w-full">
@@ -200,22 +220,22 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
             <Table>
                 <TableHeader className="bg-muted/50 border-b border-border/50">
                     <TableRow className="hover:bg-transparent">
-                        <ThButton col="ticker" className="w-[100px] text-primary py-4 px-6">Ativo</ThButton>
-                        <ThButton col="price">Preço</ThButton>
-                        <ThButton col="change">Variação</ThButton>
-                        <ThButton col="quantity">Qtd</ThButton>
-                        <ThButton col="cost">P. Médio</ThButton>
-                        <ThButton col="total">Total</ThButton>
-                        <ThButton col="roi">ROI</ThButton>
-                        <ThButton col="graham">Graham</ThButton>
-                        <ThButton col="margin">Margem</ThButton>
-                        {visibleCols.has("pl") && <ThButton col="pl">P/L</ThButton>}
-                        {visibleCols.has("pvp") && <ThButton col="pvp">P/VP</ThButton>}
-                        {visibleCols.has("dividendYield") && <ThButton col="dividendYield">Div. Yield</ThButton>}
-                        {visibleCols.has("evEbitda") && <ThButton col="evEbitda">EV/EBITDA</ThButton>}
-                        {visibleCols.has("netMargin") && <ThButton col="netMargin">Mg. Líquida</ThButton>}
-                        {visibleCols.has("ebitdaMargin") && <ThButton col="ebitdaMargin">Mg. EBITDA</ThButton>}
-                        <ThButton col="status">Status</ThButton>
+                        <ThButton col="ticker" className="w-[100px] text-primary py-4 px-6" {...sortProps}>Ativo</ThButton>
+                        <ThButton col="price" {...sortProps}>Preço</ThButton>
+                        <ThButton col="change" {...sortProps}>Variação</ThButton>
+                        <ThButton col="quantity" {...sortProps}>Qtd</ThButton>
+                        <ThButton col="cost" {...sortProps}>P. Médio</ThButton>
+                        <ThButton col="total" {...sortProps}>Total</ThButton>
+                        <ThButton col="roi" {...sortProps}>ROI</ThButton>
+                        <ThButton col="graham" {...sortProps}>Graham</ThButton>
+                        <ThButton col="margin" {...sortProps}>Margem</ThButton>
+                        {visibleCols.has("pl") && <ThButton col="pl" {...sortProps}>P/L</ThButton>}
+                        {visibleCols.has("pvp") && <ThButton col="pvp" {...sortProps}>P/VP</ThButton>}
+                        {visibleCols.has("dividendYield") && <ThButton col="dividendYield" {...sortProps}>Div. Yield</ThButton>}
+                        {visibleCols.has("evEbitda") && <ThButton col="evEbitda" {...sortProps}>EV/EBITDA</ThButton>}
+                        {visibleCols.has("netMargin") && <ThButton col="netMargin" {...sortProps}>Mg. Líquida</ThButton>}
+                        {visibleCols.has("ebitdaMargin") && <ThButton col="ebitdaMargin" {...sortProps}>Mg. EBITDA</ThButton>}
+                        <ThButton col="status" {...sortProps}>Status</ThButton>
                         <TableHead className="text-right text-[10px] font-black uppercase tracking-widest text-primary py-4 px-6">Ações</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -238,8 +258,8 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                         </TableRow>
                     ) : (
                         sorted.map(({ stock, vi, margin, roi, status, totalValue, totalGain }) => (
+                            <React.Fragment key={stock.ticker}>
                             <TableRow
-                                key={stock.ticker}
                                 className="group border-b border-border/30 hover:bg-primary/5 transition-all duration-300"
                             >
                                 <TableCell className="py-4 px-6">
@@ -361,6 +381,24 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                                 </TableCell>
                                 <TableCell className="text-right py-4 px-6">
                                     <div className="flex items-center justify-end gap-1">
+                                        {/* Botao de Analise IA */}
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 transition-colors ${
+                                                expandedAI === stock.ticker
+                                                    ? "text-primary bg-primary/10"
+                                                    : "text-muted-foreground hover:text-primary"
+                                            }`}
+                                            onClick={() =>
+                                                setExpandedAI(
+                                                    expandedAI === stock.ticker ? null : stock.ticker
+                                                )
+                                            }
+                                            title="Analisar com IA"
+                                        >
+                                            <Bot className="h-3.5 w-3.5" />
+                                        </Button>
                                         {onShowChart && (
                                             <Button
                                                 variant="ghost"
@@ -397,6 +435,28 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
                                     </div>
                                 </TableCell>
                             </TableRow>
+                            {/* Row expandivel com painel de analise IA */}
+                            {expandedAI === stock.ticker && (
+                                <TableRow className="bg-slate-950/50 hover:bg-slate-950/50 border-b border-primary/10">
+                                    <TableCell colSpan={totalColSpan} className="p-4">
+                                        <AIAnalysisPanel
+                                            ticker={stock.ticker}
+                                            nomeEmpresa={stock.ticker}
+                                            cotacao={stock.price}
+                                            precoTeto={vi}
+                                            margemSeguranca={margin}
+                                            score={stock.score}
+                                            pl={stock.pl}
+                                            pvp={stock.pvp}
+                                            roe={stock.roe}
+                                            dividendYield={stock.dividendYield}
+                                            debtToEbitda={stock.debtToEbitda}
+                                            netMargin={stock.netMargin}
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                            </React.Fragment>
                         ))
                     )}
                 </TableBody>
@@ -406,3 +466,4 @@ export const StocksTable: React.FC<StocksTableProps> = ({ stocks, onRefreshStock
 };
 
 export default StocksTable;
+

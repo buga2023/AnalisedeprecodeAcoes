@@ -7,7 +7,7 @@ const MAX_RESULTS = 20;
 export function useStockSearch() {
   const [allStocks, setAllStocks] = useState<StockOption[]>([]);
   const [results, setResults] = useState<StockOption[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadedRef = useRef(false);
 
@@ -15,7 +15,6 @@ export function useStockSearch() {
     if (loadedRef.current) return;
     loadedRef.current = true;
 
-    setIsLoading(true);
     fetchAvailableStocks()
       .then((stocks) => {
         setAllStocks(stocks);

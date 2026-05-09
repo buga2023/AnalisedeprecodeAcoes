@@ -30,3 +30,12 @@ export interface Stock {
   netMargin: number;
   ebitdaMargin: number;
 }
+
+export interface Relatorio {
+  ticker: string;
+  periodo: string;
+  dataFim: string;
+  lucroLiquido: number;
+  receita: number;
+  resultado: 'positivo' | 'negativo';
+}

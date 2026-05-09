@@ -1,18 +1,25 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { LoginScreen } from "@/components/LoginScreen";
 import { StocksTable } from "@/components/stocks/StocksTable";
 import { StockForm } from "@/components/stocks/StockForm";
-import { StockChart } from "@/components/stocks/StockChart";
 import { MarketTicker } from "@/components/stocks/MarketTicker";
 import { RiskMetrics } from "@/components/stocks/RiskMetrics";
 import { DCFValuation } from "@/components/stocks/DCFValuation";
-import { AIInsights } from "@/components/stocks/AIInsights";
+import { CotacaoStatus } from "@/components/stocks/CotacaoStatus";
+import { DashboardIntegrado } from "@/components/stocks/DashboardIntegrado";
+import { RelatoriosPanel } from "@/components/stocks/RelatoriosPanel";
 import { LayoutDashboard, TrendingUp, RefreshCw, Settings, Key, Wifi, WifiOff, X } from "lucide-react";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
+import { useRelatorios } from "@/hooks/useRelatorios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Stock } from "@/types/stock";
+
+const AIInsights = lazy(() => import("@/components/stocks/AIInsights"));
+const StockChart = lazy(() =>
+  import("@/components/stocks/StockChart").then((module) => ({ default: module.StockChart }))
+);
 
 function AppContent() {
   const {
@@ -26,7 +33,15 @@ function AppContent() {
     removeStock,
     refreshAll,
     refreshStock,
+    manualRefresh,
+    lastRefreshed,
   } = useStockQuotes();
+  const {
+    relatorios,
+    loading: relatoriosLoading,
+    error: relatoriosError,
+    refetch: refetchRelatorios,
+  } = useRelatorios(stocks.map((stock) => stock.ticker), token || undefined);
 
   const [showSettings, setShowSettings] = useState(false);
   const [tokenInput, setTokenInput] = useState(token);
@@ -178,6 +193,15 @@ function AppContent() {
           <MarketTicker />
         </section>
 
+        <section className="animate-in fade-in slide-in-from-bottom-3 duration-450">
+          <CotacaoStatus
+            stocks={stocks}
+            lastRefreshed={lastRefreshed}
+            isRefreshing={isRefreshing}
+            onRefresh={manualRefresh}
+          />
+        </section>
+
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} token={token} />
         </section>
@@ -185,7 +209,9 @@ function AppContent() {
         {/* AI Insights */}
         {stocks.length > 0 && (
           <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <AIInsights stocks={stocks} />
+            <Suspense fallback={<div className="h-24 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
+              <AIInsights stocks={stocks} />
+            </Suspense>
           </section>
         )}
 
@@ -199,6 +225,20 @@ function AppContent() {
               <DCFValuation stocks={stocks} />
             </section>
           </div>
+        )}
+
+        {stocks.length > 0 && (
+          <DashboardIntegrado stocks={stocks} relatorios={relatorios} />
+        )}
+
+        {stocks.length > 0 && (
+          <RelatoriosPanel
+            stocks={stocks}
+            relatorios={relatorios}
+            loading={relatoriosLoading}
+            error={relatoriosError}
+            onRefresh={refetchRelatorios}
+          />
         )}
 
         <main className="animate-in fade-in slide-in-from-bottom-6 duration-700">
@@ -228,11 +268,13 @@ function AppContent() {
         {/* Stock Chart */}
         {chartTicker && (
           <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <StockChart
-              ticker={chartTicker}
-              token={token}
-              onClose={() => setChartTicker(null)}
-            />
+            <Suspense fallback={<div className="h-80 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
+              <StockChart
+                ticker={chartTicker}
+                token={token}
+                onClose={() => setChartTicker(null)}
+              />
+            </Suspense>
           </section>
         )}
 

@@ -19,7 +19,7 @@ import {
     getStoredGroqKey,
     setStoredGroqKey,
 } from "@/lib/groq";
-import type { GroqInsight, GroqResponse } from "@/lib/groq";
+import type { GroqResponse } from "@/lib/groq";
 import type { Stock } from "@/types/stock";
 
 interface AIInsightsProps {

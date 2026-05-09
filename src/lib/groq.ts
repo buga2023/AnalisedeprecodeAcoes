@@ -4,7 +4,7 @@
  * API compativel com OpenAI
  */
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_API_URL = "/api/groq";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 const GROQ_KEY_STORAGE = "stocks-ai-groq-key";
@@ -101,13 +101,8 @@ REGRAS DE ANALISE:
 Responda SOMENTE com o JSON, nada mais.`;
 }
 
-export async function fetchGroqInsights(
-    apiKey: string,
-    stocks: PortfolioData[]
-): Promise<GroqResponse> {
-    if (!apiKey) {
-        throw new Error("Chave da API Groq nao configurada.");
-    }
+export async function fetchGroqInsights(stocks: PortfolioData[]): Promise<GroqResponse> {
+    
 
     if (stocks.length === 0) {
         throw new Error("Nenhum ativo no portfolio para analisar.");
@@ -119,7 +114,7 @@ export async function fetchGroqInsights(
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
+            
         },
         body: JSON.stringify({
             model: GROQ_MODEL,
@@ -183,8 +178,9 @@ export async function fetchGroqInsights(
         }
 
         return parsed;
-    } catch (parseError) {
+    } catch {
         console.error("Erro ao fazer parse da resposta Groq:", textContent);
         throw new Error("Erro ao interpretar resposta da IA. Tente novamente.");
     }
 }
+

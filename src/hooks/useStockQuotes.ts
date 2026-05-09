@@ -6,8 +6,16 @@ import { calculateGrahamValue, calculateStockScore } from "@/lib/calculators";
 
 const STORAGE_KEY = "stocks-ai-portfolio";
 const TOKEN_KEY = "stocks-ai-brapi-token";
-const DEFAULT_TOKEN = "CLEBS2H2C4C9RG8W";
 const POLL_INTERVAL = 60_000;
+
+function normalizeMarketTime(value?: string): string {
+  if (!value) return new Date().toISOString();
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  return new Date().toISOString();
+}
 
 function mapQuoteToStock(
   quote: BrapiQuoteResult,
@@ -33,7 +41,15 @@ function mapQuoteToStock(
   const totalRevenue = quote.financialData?.totalRevenue ?? 0;
   const ebitdaMargin = totalRevenue > 0 && ebitda > 0 ? ebitda / totalRevenue : 0;
 
-  const { total, breakdown } = calculateStockScore({ price, grahamValue, roe, debtToEbitda, dividendYield, pl, evEbitda });
+  const { total, breakdown } = calculateStockScore({
+    price,
+    grahamValue,
+    roe,
+    debtToEbitda,
+    dividendYield,
+    pl,
+    evEbitda,
+  });
 
   return {
     ticker: quote.symbol,
@@ -46,7 +62,7 @@ function mapQuoteToStock(
     debtToEbitda,
     change: quote.regularMarketChange ?? 0,
     changePercent: quote.regularMarketChangePercent ?? 0,
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: normalizeMarketTime(quote.regularMarketTime),
     score: total,
     scoreBreakdown: breakdown,
     isFavorite: existingFavorite ?? false,
@@ -62,9 +78,9 @@ function mapQuoteToStock(
 function loadStocksFromStorage(): Stock[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return JSON.parse(raw) as Stock[];
   } catch {
-    // ignore corrupt data
+    // Ignora dados corrompidos do localStorage.
   }
   return [];
 }
@@ -74,7 +90,7 @@ function saveStocksToStorage(stocks: Stock[]) {
 }
 
 export function getStoredToken(): string {
-  return localStorage.getItem(TOKEN_KEY) ?? DEFAULT_TOKEN;
+  return localStorage.getItem(TOKEN_KEY) ?? "";
 }
 
 export function setStoredToken(token: string) {
@@ -89,21 +105,19 @@ export function useStockQuotes() {
   const [stocks, setStocks] = useState<Stock[]>(loadStocksFromStorage);
   const [token, setToken] = useState(getStoredToken);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Persist stocks to localStorage whenever they change
   useEffect(() => {
     saveStocksToStorage(stocks);
   }, [stocks]);
 
-  // Persist token
   const updateToken = useCallback((newToken: string) => {
     setStoredToken(newToken);
     setToken(newToken);
   }, []);
 
-  // Refresh all stock prices from the API
   const refreshAll = useCallback(async () => {
     if (stocks.length === 0) return;
 
@@ -118,20 +132,17 @@ export function useStockQuotes() {
         const quoteMap = new Map(quotes.map((q) => [q.symbol, q]));
         return prev.map((stock) => {
           const quote = quoteMap.get(stock.ticker);
-          if (quote) {
-            return mapQuoteToStock(quote, stock.cost, stock.quantity, stock.isFavorite);
-          }
-          return stock;
+          return quote ? mapQuoteToStock(quote, stock.cost, stock.quantity, stock.isFavorite) : stock;
         });
       });
+      setLastRefreshed(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao atualizar cotações.");
+      setError(err instanceof Error ? err.message : "Erro ao atualizar cotacoes.");
     } finally {
       setIsRefreshing(false);
     }
-  }, [stocks.length, token]);
+  }, [stocks, token]);
 
-  // Refresh a single stock
   const refreshStock = useCallback(
     async (ticker: string) => {
       setError(null);
@@ -142,14 +153,14 @@ export function useStockQuotes() {
             s.ticker === ticker ? mapQuoteToStock(quote, s.cost, s.quantity, s.isFavorite) : s
           )
         );
+        setLastRefreshed(new Date());
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro ao atualizar cotação.");
+        setError(err instanceof Error ? err.message : "Erro ao atualizar cotacao.");
       }
     },
     [token]
   );
 
-  // Add a new stock by fetching its data from the API
   const addStock = useCallback(
     async (
       ticker: string,
@@ -176,22 +187,21 @@ export function useStockQuotes() {
           }
           return [newStock, ...prev];
         });
+        setLastRefreshed(new Date());
 
         return newStock;
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro ao buscar ação.");
+        setError(err instanceof Error ? err.message : "Erro ao buscar acao.");
         return null;
       }
     },
     [token]
   );
 
-  // Remove a stock from the portfolio
   const removeStock = useCallback((ticker: string) => {
     setStocks((prev) => prev.filter((s) => s.ticker !== ticker));
   }, []);
 
-  // Toggle favorite status
   const toggleFavorite = useCallback((ticker: string) => {
     setStocks((prev) =>
       prev.map((s) =>
@@ -200,7 +210,6 @@ export function useStockQuotes() {
     );
   }, []);
 
-  // Set up polling interval
   useEffect(() => {
     if (stocks.length === 0) return;
 
@@ -220,6 +229,7 @@ export function useStockQuotes() {
     token,
     updateToken,
     isRefreshing,
+    lastRefreshed,
     error,
     clearError: () => setError(null),
     addStock,
@@ -227,5 +237,6 @@ export function useStockQuotes() {
     toggleFavorite,
     refreshAll,
     refreshStock,
+    manualRefresh: refreshAll,
   };
 }

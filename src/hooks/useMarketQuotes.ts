@@ -8,9 +8,7 @@ export interface MarketQuote {
     type: 'currency' | 'currency-usd' | 'crypto' | 'commodity';
 }
 
-const AWESOME_API_URL = 'https://economia.awesomeapi.com.br/last/';
-const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
-const API_KEY = 'b0e88889286e421e69e01b7fe29aad87caa4d3e9556fb214f17b65f84faa5e49';
+const API_URL = '/api/market';
 
 export function useMarketQuotes() {
     const [quotes, setQuotes] = useState<MarketQuote[]>([]);
@@ -21,7 +19,7 @@ export function useMarketQuotes() {
         try {
             setIsLoading(true);
             setError(null);
-            const response = await fetch(`${AWESOME_API_URL}${TICKERS}/?apikey=${API_KEY}`);
+            const response = await fetch(API_URL);
 
             if (!response.ok) {
                 throw new Error('Falha ao buscar cotações do mercado');

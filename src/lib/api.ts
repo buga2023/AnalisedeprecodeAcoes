@@ -1,4 +1,4 @@
-const BRAPI_BASE_URL = "https://brapi.dev/api";
+const BRAPI_PROXY_URL = "/api/brapi";
 
 export interface BrapiFinancialData {
   returnOnEquity?: number;
@@ -43,11 +43,11 @@ export async function fetchStockQuote(
   ticker: string,
   token?: string
 ): Promise<BrapiQuoteResult> {
-  const url = new URL(`${BRAPI_BASE_URL}/quote/${encodeURIComponent(ticker.toUpperCase())}`);
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin); url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
   if (token) {
     url.searchParams.set("token", token);
   }
-  url.searchParams.set("modules", "defaultKeyStatistics,financialData");
+  url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
   const response = await fetch(url.toString());
 
@@ -168,7 +168,9 @@ export async function fetchAvailableStocks(): Promise<StockOption[]> {
   if (cachedStockOptions) return cachedStockOptions;
 
   try {
-    const response = await fetch(`${BRAPI_BASE_URL}/available`);
+    const url = new URL(BRAPI_PROXY_URL, window.location.origin);
+    url.searchParams.set("endpoint", "/available");
+    const response = await fetch(url.toString());
 
     if (!response.ok) {
       throw new Error(`Erro ao buscar lista de ações: ${response.status}`);
@@ -225,7 +227,7 @@ export async function fetchStockHistory(
   token?: string
 ): Promise<HistoricalDataPoint[]> {
   const interval = RANGE_INTERVAL_MAP[range];
-  const url = new URL(`${BRAPI_BASE_URL}/quote/${encodeURIComponent(ticker.toUpperCase())}`);
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin); url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
   url.searchParams.set("range", range);
   url.searchParams.set("interval", interval);
   if (token) {
@@ -260,11 +262,11 @@ export async function fetchMultipleQuotes(
   if (tickers.length === 0) return [];
 
   const tickerString = tickers.map((t) => t.toUpperCase()).join(",");
-  const url = new URL(`${BRAPI_BASE_URL}/quote/${encodeURIComponent(tickerString)}`);
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin); url.searchParams.set("endpoint", `/quote/${encodeURIComponent(tickerString)}`);
   if (token) {
     url.searchParams.set("token", token);
   }
-  url.searchParams.set("modules", "defaultKeyStatistics,financialData");
+  url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
   const response = await fetch(url.toString());
 
@@ -283,3 +285,4 @@ export async function fetchMultipleQuotes(
 
   return data.results;
 }
+
