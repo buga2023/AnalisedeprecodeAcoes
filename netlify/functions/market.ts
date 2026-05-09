@@ -8,29 +8,26 @@ export const handler: Handler = async (event: HandlerEvent) => {
     "Content-Type": "application/json",
   };
 
+  // Responder ao Preflight de CORS
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: corsHeaders, body: "" };
   }
 
-  if (event.httpMethod !== "GET") {
-    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
-  }
-
-  const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
-  const apiKey = process.env.AWESOME_API_KEY;
-
-  // AwesomeAPI funciona sem chave para a maioria dos casos, mas usamos se disponível
-  const apiUrl = apiKey 
-    ? `https://economia.awesomeapi.com.br/last/${TICKERS}/?token=${apiKey}`
-    : `https://economia.awesomeapi.com.br/last/${TICKERS}`;
-
-
-
   try {
+    // Lista simplificada e garantida de funcionar na AwesomeAPI
+    const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
+    const apiUrl = `https://economia.awesomeapi.com.br/last/${TICKERS}`;
+
     const res = await fetch(apiUrl);
+    
     if (!res.ok) {
-      throw new Error(`AwesomeAPI retornou status ${res.status}`);
+      return {
+        statusCode: res.status,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: `AwesomeAPI retornou status ${res.status}` }),
+      };
     }
+
     const data = await res.json();
 
     return {
@@ -39,15 +36,13 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: JSON.stringify(data),
     };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("Erro no proxy AwesomeAPI:", error);
+    console.error("Erro no proxy Market:", error);
     return {
       statusCode: 500,
       headers: corsHeaders,
       body: JSON.stringify({ 
-        error: "Erro ao buscar cotações de moedas.",
-        details: errorMsg,
-        stack: error instanceof Error ? error.stack : undefined
+        error: "Falha ao processar cotações do mercado",
+        details: error instanceof Error ? error.message : String(error)
       }),
     };
   }
