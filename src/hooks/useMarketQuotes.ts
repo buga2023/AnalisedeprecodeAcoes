@@ -55,50 +55,50 @@ export function useMarketQuotes() {
                 {
                     code: 'USD',
                     name: 'Dólar',
-                    price: parseFloat(data.USDBRL.bid),
-                    pctChange: parseFloat(data.USDBRL.pctChange),
+                    price: parseFloat(data.USDBRL?.bid || '0'),
+                    pctChange: parseFloat(data.USDBRL?.pctChange || '0'),
                     type: 'currency'
                 },
                 {
                     code: 'EUR',
                     name: 'Euro',
-                    price: parseFloat(data.EURBRL.bid),
-                    pctChange: parseFloat(data.EURBRL.pctChange),
+                    price: parseFloat(data.EURBRL?.bid || '0'),
+                    pctChange: parseFloat(data.EURBRL?.pctChange || '0'),
                     type: 'currency'
                 },
                 {
                     code: 'BRL',
                     name: 'Real (em USD)',
-                    price: parseFloat(data.BRLUSD.bid),
-                    pctChange: parseFloat(data.BRLUSD.pctChange),
+                    price: parseFloat(data.BRLUSD?.bid || '0'),
+                    pctChange: parseFloat(data.BRLUSD?.pctChange || '0'),
                     type: 'currency-usd'
                 },
                 {
                     code: 'BTC',
                     name: 'Bitcoin',
-                    price: parseFloat(data.BTCBRL.bid),
-                    pctChange: parseFloat(data.BTCBRL.pctChange),
+                    price: parseFloat(data.BTCBRL?.bid || '0'),
+                    pctChange: parseFloat(data.BTCBRL?.pctChange || '0'),
                     type: 'crypto'
                 },
                 {
                     code: 'ETH',
                     name: 'Ethereum',
-                    price: parseFloat(data.ETHBRL.bid),
-                    pctChange: parseFloat(data.ETHBRL.pctChange),
+                    price: parseFloat(data.ETHBRL?.bid || '0'),
+                    pctChange: parseFloat(data.ETHBRL?.pctChange || '0'),
                     type: 'crypto'
                 },
                 {
                     code: 'Ouro',
                     name: 'Ouro (Oz)',
-                    price: parseFloat(data.XAUUSD.bid),
-                    pctChange: parseFloat(data.XAUUSD.pctChange),
+                    price: parseFloat(data.XAUUSD?.bid || '0'),
+                    pctChange: parseFloat(data.XAUUSD?.pctChange || '0'),
                     type: 'commodity'
                 },
                 {
                     code: 'Prata',
                     name: 'Prata (Oz)',
-                    price: parseFloat(data.XAGUSD.bid),
-                    pctChange: parseFloat(data.XAGUSD.pctChange),
+                    price: parseFloat(data.XAGUSD?.bid || '0'),
+                    pctChange: parseFloat(data.XAGUSD?.pctChange || '0'),
                     type: 'commodity'
                 }
             ];

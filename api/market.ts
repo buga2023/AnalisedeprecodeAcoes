@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Cache simples em memória (persiste enquanto a função estiver "quente")
+// Cache em memória por instância da função
 let cachedData: any = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 120000; // 2 minutos
+const CACHE_DURATION = 60000; // Reduzi para 1 minuto para maior precisão em prod
 
 export default async function handler(
   request: VercelRequest,
@@ -15,12 +15,12 @@ export default async function handler(
   response.setHeader('Content-Type', 'application/json');
 
   if (request.method === 'OPTIONS') {
-    return response.status(200).end();
+    return response.status(204).end();
   }
 
   const token = (request.query.token as string) || process.env.BRAPI_TOKEN;
 
-  // Tentar Brapi se houver token
+  // 1. Tentar Brapi (Alta Prioridade/Estabilidade)
   if (token) {
     try {
       const currencyUrl = `https://brapi.dev/api/v2/currency?currency=USD-BRL,EUR-BRL,BRL-USD&token=${token}`;
@@ -36,19 +36,30 @@ export default async function handler(
         const dataCrypto = await resCrypto.json();
 
         const mappedData: any = {};
-        dataCurr.currency.forEach((c: any) => {
-          const key = `${c.fromCurrency}${c.toCurrency}`;
-          mappedData[key] = { bid: c.bidPrice, pctChange: c.variationPercentage };
-        });
+        
+        // Moedas
+        if (dataCurr.currency) {
+          dataCurr.currency.forEach((c: any) => {
+            const key = `${c.fromCurrency}${c.toCurrency}`;
+            mappedData[key] = { 
+              bid: String(c.bidPrice || '0'), 
+              pctChange: String(c.variationPercentage || '0') 
+            };
+          });
+        }
 
-        dataCrypto.coins.forEach((c: any) => {
-          const key = `${c.coin}BRL`;
-          mappedData[key] = {
-            bid: c.regularMarketPrice.toString(),
-            pctChange: c.regularMarketChangePercent.toString()
-          };
-        });
+        // Cripto
+        if (dataCrypto.coins) {
+          dataCrypto.coins.forEach((c: any) => {
+            const key = `${c.coin}BRL`;
+            mappedData[key] = {
+              bid: String(c.regularMarketPrice || '0'),
+              pctChange: String(c.regularMarketChangePercent || '0')
+            };
+          });
+        }
 
+        // Mock para Metais (Brapi Free não cobre XAU/XAG)
         mappedData['XAUUSD'] = { bid: '0', pctChange: '0' };
         mappedData['XAGUSD'] = { bid: '0', pctChange: '0' };
 
@@ -56,11 +67,11 @@ export default async function handler(
         return response.status(200).json(mappedData);
       }
     } catch (e) {
-      console.warn("Erro ao buscar na Brapi, tentando AwesomeAPI:", e);
+      console.warn("Brapi falhou, tentando AwesomeAPI:", e);
     }
   }
 
-  // Fallback AwesomeAPI com Cache
+  // 2. Fallback AwesomeAPI com Cache
   const now = Date.now();
   if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
     response.setHeader('X-Cache', 'HIT');
@@ -71,9 +82,9 @@ export default async function handler(
     const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
     const apiUrl = `https://economia.awesomeapi.com.br/last/${TICKERS}`;
 
-    const res = await fetch(apiUrl);
+    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) {
-      return response.status(res.status).json({ error: `AwesomeAPI status ${res.status}` });
+      throw new Error(`Status ${res.status}`);
     }
 
     const data = await res.json();
@@ -83,9 +94,17 @@ export default async function handler(
     response.setHeader('X-Cache', 'MISS');
     return response.status(200).json(data);
   } catch (error) {
-    return response.status(500).json({ 
-      error: "Falha ao processar cotações do mercado",
-      details: error instanceof Error ? error.message : String(error)
+    console.error("Erro total no Market Proxy:", error);
+    
+    // Se falhar tudo mas tivermos cache (mesmo expirado), servimos o cache
+    if (cachedData) {
+      response.setHeader('X-Cache', 'STALE');
+      return response.status(200).json(cachedData);
+    }
+
+    return response.status(502).json({ 
+      error: "Serviço de cotações temporariamente indisponível",
+      details: error instanceof Error ? error.message : "Erro desconhecido"
     });
   }
 }
