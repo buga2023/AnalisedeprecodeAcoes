@@ -27,42 +27,50 @@ export default async function handler(
         const currencyUrl = `https://brapi.dev/api/v2/currency?currency=USD-BRL,EUR-BRL,BRL-USD&token=${token}`;
         const cryptoUrl = `https://brapi.dev/api/v2/crypto?coin=BTC,ETH&currency=BRL&token=${token}`;
 
-        const [resCurr, resCrypto] = await Promise.all([
-          fetch(currencyUrl, { signal: AbortSignal.timeout(8000) }),
-          fetch(cryptoUrl, { signal: AbortSignal.timeout(8000) })
-        ]);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-        if (resCurr.ok && resCrypto.ok) {
-          const dataCurr = await resCurr.json();
-          const dataCrypto = await resCrypto.json();
+        try {
+          const [resCurr, resCrypto] = await Promise.all([
+            fetch(currencyUrl, { signal: controller.signal }),
+            fetch(cryptoUrl, { signal: controller.signal })
+          ]);
+          clearTimeout(timeoutId);
 
-          const mappedData: any = {};
-          
-          if (dataCurr.currency && Array.isArray(dataCurr.currency)) {
-            dataCurr.currency.forEach((c: any) => {
-              const key = `${c.fromCurrency}${c.toCurrency}`;
-              mappedData[key] = { 
-                bid: String(c.bidPrice || '0'), 
-                pctChange: String(c.variationPercentage || '0') 
-              };
-            });
+          if (resCurr.ok && resCrypto.ok) {
+            const dataCurr = await resCurr.json();
+            const dataCrypto = await resCrypto.json();
+
+            const mappedData: any = {};
+            
+            if (dataCurr.currency && Array.isArray(dataCurr.currency)) {
+              dataCurr.currency.forEach((c: any) => {
+                const key = `${c.fromCurrency}${c.toCurrency}`;
+                mappedData[key] = { 
+                  bid: String(c.bidPrice || '0'), 
+                  pctChange: String(c.variationPercentage || '0') 
+                };
+              });
+            }
+
+            if (dataCrypto.coins && Array.isArray(dataCrypto.coins)) {
+              dataCrypto.coins.forEach((c: any) => {
+                const key = `${c.coin}BRL`;
+                mappedData[key] = {
+                  bid: String(c.regularMarketPrice || '0'),
+                  pctChange: String(c.regularMarketChangePercent || '0')
+                };
+              });
+            }
+
+            mappedData['XAUUSD'] = mappedData['XAUUSD'] || { bid: '0', pctChange: '0' };
+            mappedData['XAGUSD'] = mappedData['XAGUSD'] || { bid: '0', pctChange: '0' };
+
+            response.setHeader('X-Source', 'Brapi');
+            return response.status(200).json(mappedData);
           }
-
-          if (dataCrypto.coins && Array.isArray(dataCrypto.coins)) {
-            dataCrypto.coins.forEach((c: any) => {
-              const key = `${c.coin}BRL`;
-              mappedData[key] = {
-                bid: String(c.regularMarketPrice || '0'),
-                pctChange: String(c.regularMarketChangePercent || '0')
-              };
-            });
-          }
-
-          mappedData['XAUUSD'] = mappedData['XAUUSD'] || { bid: '0', pctChange: '0' };
-          mappedData['XAGUSD'] = mappedData['XAGUSD'] || { bid: '0', pctChange: '0' };
-
-          response.setHeader('X-Source', 'Brapi');
-          return response.status(200).json(mappedData);
+        } finally {
+          clearTimeout(timeoutId);
         }
       } catch (e) {
         console.warn("Brapi falhou, tentando AwesomeAPI:", e);

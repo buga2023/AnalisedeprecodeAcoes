@@ -36,10 +36,19 @@ function extrairTextoHTML(html: string): string {
 }
 
 async function scrapar(url: string): Promise<string> {
-  const res = await fetch(url, { headers: BROWSER_HEADERS });
-  if (!res.ok) throw new Error(`HTTP ${res.status} em ${url}`);
-  const html = await res.text();
-  return extrairTextoHTML(html);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  
+  try {
+    const res = await fetch(url, { headers: BROWSER_HEADERS, signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status} em ${url}`);
+    const html = await res.text();
+    return extrairTextoHTML(html);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export default async function handler(
@@ -67,10 +76,19 @@ export default async function handler(
 
     try {
       fonte = FONTES.investidor10(ticker);
-      const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
-      if (res.ok) {
-        const html = await res.text();
-        conteudo = extrairTextoHTML(html);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      
+      try {
+        const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          const html = await res.text();
+          conteudo = extrairTextoHTML(html);
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
     } catch (err) {
       console.warn(`[scrape] Investidor10 falhou para ${ticker}:`, err);
@@ -79,10 +97,19 @@ export default async function handler(
     if (!conteudo || conteudo.length < 100) {
       try {
         fonte = FONTES.statusinvest(ticker);
-        const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
-        if (res.ok) {
-          const html = await res.text();
-          conteudo = extrairTextoHTML(html);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        
+        try {
+          const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: controller.signal });
+          clearTimeout(timeoutId);
+          
+          if (res.ok) {
+            const html = await res.text();
+            conteudo = extrairTextoHTML(html);
+          }
+        } finally {
+          clearTimeout(timeoutId);
         }
       } catch (err) {
         console.warn(`[scrape] StatusInvest falhou para ${ticker}:`, err);
