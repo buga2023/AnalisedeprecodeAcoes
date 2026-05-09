@@ -19,11 +19,10 @@ export const handler: Handler = async (event: HandlerEvent) => {
   const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
   const apiKey = process.env.AWESOME_API_KEY;
 
-  if (!apiKey) {
-    return { statusCode: 500, body: JSON.stringify({ error: "API Key não configurada no servidor." }) };
-  }
-
-  const apiUrl = `https://economia.awesomeapi.com.br/last/${TICKERS}/?apikey=${apiKey}`;
+  // AwesomeAPI funciona sem chave para a maioria dos casos, mas usamos se disponível
+  const apiUrl = apiKey 
+    ? `https://economia.awesomeapi.com.br/last/${TICKERS}/?token=${apiKey}`
+    : `https://economia.awesomeapi.com.br/last/${TICKERS}`;
 
 
 
@@ -40,11 +39,16 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: JSON.stringify(data),
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
     console.error("Erro no proxy AwesomeAPI:", error);
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: "Erro ao buscar cotações de moedas." }),
+      body: JSON.stringify({ 
+        error: "Erro ao buscar cotações de moedas.",
+        details: errorMsg,
+        stack: error instanceof Error ? error.stack : undefined
+      }),
     };
   }
 };
