@@ -69,7 +69,6 @@ async function scrapar(url: string): Promise<string> {
 }
 
 export const handler: Handler = async (event: HandlerEvent) => {
-  // Apenas GET
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
@@ -77,64 +76,84 @@ export const handler: Handler = async (event: HandlerEvent) => {
     "Content-Type": "application/json",
   };
 
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders, body: "" };
-  }
-
-  if (event.httpMethod !== "GET") {
-    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
-  }
-
-  const ticker = event.queryStringParameters?.ticker?.toUpperCase();
-
-  // Validar formato do ticker (ex: PETR4, VALE3, BBAS3, VIVT3)
-  if (!ticker || !/^[A-Z]{4}\d{1,2}$/.test(ticker)) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ erro: "Ticker invalido. Use formato XXXX0 (ex: PETR4)" }),
-    };
-  }
-
-
-
-  // Tentar Investidor10 primeiro, StatusInvest como fallback
-  let conteudo = "";
-  let fonte = "";
-
   try {
-    fonte = FONTES.investidor10(ticker);
-    conteudo = await scrapar(fonte);
-  } catch (err) {
-    console.warn(`[scrape] Investidor10 falhou para ${ticker}:`, err);
-  }
-
-  // Se conteudo muito curto, tentar StatusInvest
-  if (!conteudo || conteudo.length < 100) {
-    try {
-      fonte = FONTES.statusinvest(ticker);
-      conteudo = await scrapar(fonte);
-    } catch (err) {
-      console.warn(`[scrape] StatusInvest falhou para ${ticker}:`, err);
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 204, headers: corsHeaders, body: "" };
     }
-  }
 
-  // Se ambos falharam, retornar aviso (nao erro — nao travar a feature)
-  if (!conteudo || conteudo.length < 50) {
+    if (event.httpMethod !== "GET") {
+      return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ error: "Method Not Allowed" }) };
+    }
+
+    const ticker = event.queryStringParameters?.ticker?.toUpperCase();
+
+    // Validar formato do ticker (ex: PETR4, VALE3, BBAS3, VIVT3)
+    if (!ticker || !/^[A-Z]{4}\d{1,2}$/.test(ticker)) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Ticker inválido. Use formato XXXX0 (ex: PETR4)" }),
+      };
+    }
+
+    // Tentar Investidor10 primeiro, StatusInvest como fallback
+    let conteudo = "";
+    let fonte = "";
+
+    try {
+      fonte = FONTES.investidor10(ticker);
+      // Timeout mais curto para cada tentativa individual para não estourar os 10s totais
+      const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        const html = await res.text();
+        conteudo = extrairTextoHTML(html);
+      }
+    } catch (err) {
+      console.warn(`[scrape] Investidor10 falhou para ${ticker}:`, err);
+    }
+
+    // Se conteudo muito curto, tentar StatusInvest
+    if (!conteudo || conteudo.length < 100) {
+      try {
+        fonte = FONTES.statusinvest(ticker);
+        const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const html = await res.text();
+          conteudo = extrairTextoHTML(html);
+        }
+      } catch (err) {
+        console.warn(`[scrape] StatusInvest falhou para ${ticker}:`, err);
+      }
+    }
+
+    // Se ambos falharam, retornar aviso (nao erro — nao travar a feature)
+    if (!conteudo || conteudo.length < 50) {
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          ticker,
+          conteudo: "",
+          fonte: "",
+          aviso: "Dados não disponíveis nos sites consultados",
+        }),
+      };
+    }
+
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({
-        ticker,
-        conteudo: "",
-        fonte: "",
-        aviso: "Dados nao disponiveis nos sites consultados",
+      body: JSON.stringify({ ticker, conteudo, fonte }),
+    };
+  } catch (error) {
+    console.error("Erro no proxy Scrape:", error);
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ 
+        error: "Falha ao realizar scraping",
+        details: error instanceof Error ? error.message : String(error)
       }),
     };
   }
-
-  return {
-    statusCode: 200,
-    headers: corsHeaders,
-    body: JSON.stringify({ ticker, conteudo, fonte }),
-  };
 };

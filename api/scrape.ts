@@ -51,44 +51,60 @@ export default async function handler(
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   response.setHeader('Content-Type', 'application/json');
 
-  if (request.method === 'OPTIONS') {
-    return response.status(200).end();
-  }
-
-  const ticker = (request.query.ticker as string)?.toUpperCase();
-
-  if (!ticker || !/^[A-Z]{4}\d{1,2}$/.test(ticker)) {
-    return response.status(400).json({ error: "Ticker inválido. Use formato XXXX0 (ex: PETR4)" });
-  }
-
-  let conteudo = "";
-  let fonte = "";
-
   try {
-    fonte = FONTES.investidor10(ticker);
-    conteudo = await scrapar(fonte);
-  } catch (err) {
-    console.warn(`[scrape] Investidor10 falhou para ${ticker}:`, err);
-  }
-
-  if (!conteudo || conteudo.length < 100) {
-    try {
-      fonte = FONTES.statusinvest(ticker);
-      conteudo = await scrapar(fonte);
-    } catch (err) {
-      console.warn(`[scrape] StatusInvest falhou para ${ticker}:`, err);
+    if (request.method === 'OPTIONS') {
+      return response.status(200).end();
     }
-  }
 
-  if (!conteudo || conteudo.length < 50) {
-    return response.status(200).json({
-      ticker,
-      conteudo: "",
-      fonte: "",
-      aviso: "Dados não disponíveis nos sites consultados",
+    const ticker = (Array.isArray(request.query.ticker) ? request.query.ticker[0] : request.query.ticker as string)?.toUpperCase();
+
+    if (!ticker || !/^[A-Z]{4}\d{1,2}$/.test(ticker)) {
+      return response.status(400).json({ error: "Ticker inválido. Use formato XXXX0 (ex: PETR4)" });
+    }
+
+    let conteudo = "";
+    let fonte = "";
+
+    try {
+      fonte = FONTES.investidor10(ticker);
+      const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        const html = await res.text();
+        conteudo = extrairTextoHTML(html);
+      }
+    } catch (err) {
+      console.warn(`[scrape] Investidor10 falhou para ${ticker}:`, err);
+    }
+
+    if (!conteudo || conteudo.length < 100) {
+      try {
+        fonte = FONTES.statusinvest(ticker);
+        const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const html = await res.text();
+          conteudo = extrairTextoHTML(html);
+        }
+      } catch (err) {
+        console.warn(`[scrape] StatusInvest falhou para ${ticker}:`, err);
+      }
+    }
+
+    if (!conteudo || conteudo.length < 50) {
+      return response.status(200).json({
+        ticker,
+        conteudo: "",
+        fonte: "",
+        aviso: "Dados não disponíveis nos sites consultados",
+      });
+    }
+
+    return response.status(200).json({ ticker, conteudo, fonte });
+  } catch (error) {
+    console.error("Erro no proxy Scrape:", error);
+    return response.status(500).json({ 
+      error: "Falha ao realizar scraping",
+      details: error instanceof Error ? error.message : String(error)
     });
   }
-
-  return response.status(200).json({ ticker, conteudo, fonte });
 }
 
