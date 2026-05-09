@@ -1,8 +1,19 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
 
 export const handler: Handler = async (event: HandlerEvent) => {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, x-api-key",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
+  };
+
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: corsHeaders, body: "" };
+  }
+
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
   }
 
   const apiKey = (event.headers["x-api-key"] || event.headers["X-API-Key"]) || process.env.GROQ_API_KEY;
@@ -10,11 +21,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
     return { statusCode: 401, body: JSON.stringify({ error: "Groq API Key não configurada. Forneça uma chave no cabeçalho x-api-key ou configure no servidor." }) };
   }
 
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, x-api-key",
-    "Content-Type": "application/json",
-  };
+
 
   try {
     const payload = JSON.parse(event.body || "{}");
@@ -53,11 +60,16 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: JSON.stringify(data),
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
     console.error("Erro no proxy Groq:", error);
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: "Erro ao processar insights via IA." }),
+      body: JSON.stringify({ 
+        error: "Erro ao processar insights via IA.", 
+        details: errorMsg,
+        stack: error instanceof Error ? error.stack : undefined
+      }),
     };
   }
 };

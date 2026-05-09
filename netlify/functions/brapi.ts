@@ -1,8 +1,19 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
 
 export const handler: Handler = async (event: HandlerEvent) => {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Content-Type": "application/json",
+  };
+
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: corsHeaders, body: "" };
+  }
+
   if (event.httpMethod !== "GET") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
   }
 
   const token = process.env.BRAPI_TOKEN;
@@ -24,11 +35,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
   const apiUrl = `https://brapi.dev/api${endpoint}?${params.toString()}`;
 
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json",
-  };
+
 
   try {
     const res = await fetch(apiUrl);
@@ -49,11 +56,15 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: JSON.stringify(data),
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
     console.error("Erro no proxy Brapi:", error);
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: "Erro ao buscar dados na Brapi." }),
+      body: JSON.stringify({ 
+        error: "Erro ao buscar dados na Brapi.",
+        details: errorMsg
+      }),
     };
   }
 };

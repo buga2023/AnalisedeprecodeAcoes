@@ -70,8 +70,19 @@ async function scrapar(url: string): Promise<string> {
 
 export const handler: Handler = async (event: HandlerEvent) => {
   // Apenas GET
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Content-Type": "application/json",
+  };
+
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: corsHeaders, body: "" };
+  }
+
   if (event.httpMethod !== "GET") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
   }
 
   const ticker = event.queryStringParameters?.ticker?.toUpperCase();
@@ -84,12 +95,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
     };
   }
 
-  // Headers CORS para o frontend poder chamar
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json",
-  };
+
 
   // Tentar Investidor10 primeiro, StatusInvest como fallback
   let conteudo = "";

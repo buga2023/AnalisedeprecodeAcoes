@@ -1,8 +1,19 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
 
 export const handler: Handler = async (event: HandlerEvent) => {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Content-Type": "application/json",
+  };
+
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: corsHeaders, body: "" };
+  }
+
   if (event.httpMethod !== "GET") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
   }
 
   const TICKERS = 'USD-BRL,EUR-BRL,BTC-BRL,ETH-BRL,XAU-USD,XAG-USD,BRL-USD';
@@ -14,11 +25,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
   const apiUrl = `https://economia.awesomeapi.com.br/last/${TICKERS}/?apikey=${apiKey}`;
 
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json",
-  };
+
 
   try {
     const res = await fetch(apiUrl);
