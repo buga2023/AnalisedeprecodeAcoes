@@ -1,5 +1,0 @@
-/api/brapi    /.netlify/functions/brapi    200!
-/api/market   /.netlify/functions/market   200!
-/api/groq     /.netlify/functions/groq     200!
-/api/scrape   /.netlify/functions/scrape   200!
-/*            /index.html                  200
