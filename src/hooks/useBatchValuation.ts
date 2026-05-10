@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
-import Papa from 'papaparse';
 import type { CSVRow, ValuationRow } from '@/types/stock';
 import { fetchMultipleQuotes } from '@/lib/api';
 import { calculateFullValuation } from '@/lib/calculators';
+import { parseSheet, normalizeTicker, parseBRNumber } from '@/lib/sheetParser';
+import { detectColumns } from '@/lib/columnMappings';
 
 const STORAGE_KEY = 'stocks-ai-batch-valuation';
-const CHUNK_SIZE = 5; // Limite de requisicoes simultaneas para evitar rate limit
+const CHUNK_SIZE = 5; 
+const CHUNK_DELAY = 300; // ms
+
+export interface PendingData {
+  headers: string[];
+  rows: Record<string, string>[];
+  fileName: string;
+  initialMapping: Partial<Record<keyof CSVRow, number>>;
+}
 
 export function useBatchValuation() {
   const [rows, setRows] = useState<ValuationRow[]>(() => {
@@ -15,111 +24,132 @@ export function useBatchValuation() {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [growthRate, setGrowthRate] = useState(7);
+  const [pendingData, setPendingData] = useState<PendingData | null>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
   }, [rows]);
 
-  const importCSV = async (file: File) => {
+  const startImport = async (file: File) => {
     setIsLoading(true);
-    setProgress({ done: 0, total: 0 });
+    try {
+      const { headers, rows: sheetRows } = await parseSheet(file);
+      const { mapping } = detectColumns(headers);
+      
+      setPendingData({
+        headers,
+        rows: sheetRows,
+        fileName: file.name,
+        initialMapping: mapping
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Erro ao processar arquivo.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: true,
-      complete: async (results) => {
-        const rawData = results.data as any[];
-        
-        // Validação básica de colunas
-        const validRows: CSVRow[] = rawData
-          .filter(r => r.ticker && r.avgCost !== undefined && r.dpa !== undefined && r.eps !== undefined && r.bvps !== undefined)
-          .map(r => ({
-            ticker: String(r.ticker).toUpperCase(),
-            avgCost: Number(r.avgCost),
-            dpa: Number(r.dpa),
-            eps: Number(r.eps),
-            bvps: Number(r.bvps),
-            quantity: r.quantity ? Number(r.quantity) : undefined
-          }));
+  const processBatch = async (mapping: Record<keyof CSVRow, number | undefined>) => {
+    if (!pendingData) return;
+    
+    setIsLoading(true);
+    setRows([]);
+    setProgress({ done: 0, total: pendingData.rows.length });
 
-        if (validRows.length === 0) {
-          alert('Nenhuma linha valida encontrada no CSV. Verifique as colunas: ticker, avgCost, dpa, eps, bvps.');
-          setIsLoading(false);
-          return;
-        }
+    const rawRows = pendingData.rows;
+    const finalValuations: ValuationRow[] = [];
 
-        setProgress({ done: 0, total: validRows.length });
-        
-        const initialValuations: ValuationRow[] = validRows.map(r => ({
-          ...r,
-          currentPrice: null,
-          bazinCeiling: null,
-          bazinSignal: 'Sem dados',
-          bazinMargin: null,
-          grahamVI: null,
-          grahamSignal: 'Sem dados',
-          grahamMargin: null,
-          grahamGrowth: null,
-          grahamGrowthSignal: 'Sem dados',
-          grahamGrowthMargin: null,
-          roi: null,
-          patrimony: null,
-          fetchStatus: 'loading'
-        }));
-        
-        setRows(initialValuations);
+    // Primeiro mapeamento e calculo inicial
+    const validRows: CSVRow[] = rawRows.map(raw => {
+      const ticker = mapping.ticker !== undefined ? normalizeTicker(raw[pendingData.headers[mapping.ticker]]) : '';
+      const avgCost = mapping.avgCost !== undefined ? parseBRNumber(raw[pendingData.headers[mapping.avgCost]]) || 0 : 0;
+      
+      return {
+        ticker,
+        avgCost,
+        quantity: mapping.quantity !== undefined ? parseBRNumber(raw[pendingData.headers[mapping.quantity]]) || 0 : 0,
+        dpa: mapping.dpa !== undefined ? parseBRNumber(raw[pendingData.headers[mapping.dpa]]) || 0 : 0,
+        eps: mapping.eps !== undefined ? parseBRNumber(raw[pendingData.headers[mapping.eps]]) || 0 : 0,
+        bvps: mapping.bvps !== undefined ? parseBRNumber(raw[pendingData.headers[mapping.bvps]]) || 0 : 0,
+      };
+    }).filter(r => r.ticker.length > 0);
 
-        // Processamento em lotes (chunks) para respeitar o rate limit
-        const finalRows: ValuationRow[] = [...initialValuations];
-        
-        for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-          const chunk = validRows.slice(i, i + CHUNK_SIZE);
-          const tickers = chunk.map(r => r.ticker);
+    if (validRows.length === 0) {
+      alert('Nenhum ticker valido encontrado após o mapeamento.');
+      setIsLoading(false);
+      setPendingData(null);
+      return;
+    }
+
+    setProgress({ done: 0, total: validRows.length });
+
+    // Processamento em lotes com delay
+    for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+      const chunk = validRows.slice(i, i + CHUNK_SIZE);
+      const tickers = chunk.map(r => r.ticker);
+
+      try {
+        const quotes = await fetchMultipleQuotes(tickers);
+        const quoteMap = new Map(quotes.map(q => [q.symbol, q.regularMarketPrice]));
+
+        for (const dataRow of chunk) {
+          const price = quoteMap.get(dataRow.ticker) || null;
+          const valuation = calculateFullValuation(dataRow, price, growthRate);
           
-          try {
-            const quotes = await fetchMultipleQuotes(tickers);
-            const quoteMap = new Map(quotes.map(q => [q.symbol, q.regularMarketPrice]));
-            
-            for (let j = 0; j < chunk.length; j++) {
-              const rowIndex = i + j;
-              const ticker = chunk[j].ticker;
-              const price = quoteMap.get(ticker) || null;
-              
-              finalRows[rowIndex] = calculateFullValuation(chunk[j], price, growthRate);
-              if (!price) {
-                finalRows[rowIndex].fetchStatus = 'error';
-                finalRows[rowIndex].fetchError = 'Ticker nao encontrado';
-              }
-            }
-          } catch (error) {
-            console.error('Erro ao buscar lote:', error);
-            for (let j = 0; j < chunk.length; j++) {
-              const rowIndex = i + j;
-              finalRows[rowIndex].fetchStatus = 'error';
-              finalRows[rowIndex].fetchError = 'Erro na API';
-            }
+          if (!price) {
+            valuation.fetchStatus = 'error';
+            valuation.fetchError = 'Ticker nao encontrado';
           }
-          
-          setProgress(p => ({ ...p, done: Math.min(p.done + CHUNK_SIZE, p.total) }));
-          setRows([...finalRows]);
+          finalValuations.push(valuation);
         }
-
-        setIsLoading(false);
-      },
-      error: (error) => {
-        console.error('Erro no parse do CSV:', error);
-        alert('Erro ao ler arquivo CSV.');
-        setIsLoading(false);
+      } catch (error) {
+        console.error('Erro no lote:', error);
+        for (const dataRow of chunk) {
+          finalValuations.push({
+            ...dataRow,
+            currentPrice: null,
+            bazinCeiling: null,
+            bazinSignal: 'Sem dados',
+            bazinMargin: null,
+            grahamVI: null,
+            grahamSignal: 'Sem dados',
+            grahamMargin: null,
+            grahamGrowth: null,
+            grahamGrowthSignal: 'Sem dados',
+            grahamGrowthMargin: null,
+            roi: null,
+            patrimony: null,
+            fetchStatus: 'error',
+            fetchError: 'Erro na API'
+          } as unknown as ValuationRow);
+        }
       }
-    });
+
+      setProgress(p => ({ ...p, done: Math.min(i + CHUNK_SIZE, p.total) }));
+      setRows([...finalValuations]);
+      
+      // Delay para evitar rate limit
+      if (i + CHUNK_SIZE < validRows.length) {
+        await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY));
+      }
+    }
+
+    setIsLoading(false);
+    setPendingData(null);
   };
 
   const updateGrowthRate = (newRate: number) => {
     setGrowthRate(newRate);
     setRows(prev => prev.map(row => 
       calculateFullValuation(
-        { ticker: row.ticker, avgCost: row.avgCost, dpa: row.dpa, eps: row.eps, bvps: row.bvps, quantity: row.quantity },
+        { 
+          ticker: row.ticker, 
+          avgCost: row.avgCost, 
+          dpa: row.dpa, 
+          eps: row.eps, 
+          bvps: row.bvps, 
+          quantity: row.quantity 
+        },
         row.currentPrice,
         newRate
       )
@@ -128,21 +158,8 @@ export function useBatchValuation() {
 
   const clearBatch = () => {
     setRows([]);
+    setPendingData(null);
     localStorage.removeItem(STORAGE_KEY);
-  };
-
-  const exportCSV = () => {
-    if (rows.length === 0) return;
-    const csv = Papa.unparse(rows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `valuation_lote_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   return {
@@ -150,9 +167,11 @@ export function useBatchValuation() {
     isLoading,
     progress,
     growthRate,
-    importCSV,
+    pendingData,
+    startImport,
+    processBatch,
+    cancelImport: () => setPendingData(null),
     updateGrowthRate,
     clearBatch,
-    exportCSV
   };
 }

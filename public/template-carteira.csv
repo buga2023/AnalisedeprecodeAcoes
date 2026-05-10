@@ -2,9 +2,14 @@ ticker,avgCost,quantity,dpa,eps,bvps
 PETR4,38.50,100,2.40,5.20,28.30
 ITUB4,25.00,200,1.80,3.10,18.40
 VALE3,68.00,50,8.20,12.50,42.00
-# ticker: codigo da acao na B3 (ex: PETR4)
-# avgCost: seu preco medio de compra
-# quantity: quantidade de acoes que voce possui
-# dpa: dividendos pagos por acao nos ultimos 12 meses
-# eps: lucro por acao (LPA)
-# bvps: valor patrimonial por acao (VPA)
+BBAS3,28.40,150,2.20,5.80,32.10
+ABEV3,12.80,300,0.76,1.10,8.40
+SANB11,27.50,80,1.90,3.40,24.50
+# --- INSTRUCOES DE PREENCHIMENTO ---
+# ticker: Codigo da acao (ex: PETR4, ITUB4). Use letras maiusculas.
+# avgCost: Preco Medio pago (use ponto para decimais, ex: 38.50).
+# quantity: Quantidade de acoes em carteira.
+# dpa: Dividendos pagos por acao (Dividend Per Action) nos ultimos 12 meses.
+# eps: Lucro por acao (Earnings Per Share / LPA). Disponivel em sites como StatusInvest ou Fundamentus.
+# bvps: Valor Patrimonial por acao (Book Value Per Share / VPA). Disponivel em sites de RI.
+# DICA: Se nao tiver a quantidade, deixe 0 ou vazio.
