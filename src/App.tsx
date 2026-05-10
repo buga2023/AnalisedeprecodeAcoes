@@ -8,10 +8,12 @@ import { DCFValuation } from "@/components/stocks/DCFValuation";
 import { CotacaoStatus } from "@/components/stocks/CotacaoStatus";
 import { DashboardIntegrado } from "@/components/stocks/DashboardIntegrado";
 import { RelatoriosPanel } from "@/components/stocks/RelatoriosPanel";
-import { LayoutDashboard, TrendingUp, RefreshCw, Wifi, X } from "lucide-react";
+import { LayoutDashboard, TrendingUp, RefreshCw, Wifi, X, Settings } from "lucide-react";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { useRelatorios } from "@/hooks/useRelatorios";
 import { Button } from "@/components/ui/button";
+import { AIProviderSettings } from "@/components/stocks/AIProviderSettings";
+import { BatchValuation } from "@/components/stocks/BatchValuation";
 import type { Stock } from "@/types/stock";
 
 const AIInsights = lazy(() => import("@/components/stocks/AIInsights"));
@@ -41,6 +43,8 @@ function AppContent() {
 
   const [lastAdded, setLastAdded] = useState<Stock | null>(null);
   const [chartTicker, setChartTicker] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<'individual' | 'batch'>('individual');
 
   const handleAddStock = async (
     ticker: string,
@@ -99,6 +103,17 @@ function AppContent() {
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
 
+            {/* Settings button */}
+            <Button
+              variant="outline"
+              size="icon"
+              className={`h-9 w-9 border-border ${showSettings ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
+              onClick={() => setShowSettings(!showSettings)}
+              title="Configurações"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+
             {/* Stock count */}
             <div className="flex items-center gap-4 bg-card/50 backdrop-blur-sm border border-border p-4 rounded-xl">
               <div className="rounded-full bg-primary/20 p-2">
@@ -112,6 +127,13 @@ function AppContent() {
           </div>
         </header>
 
+        {/* Settings Panel */}
+        {showSettings && (
+          <section className="animate-in fade-in slide-in-from-top-4 duration-500">
+            <AIProviderSettings />
+          </section>
+        )}
+
         {/* API Error banner */}
         {error && (
           <div className="flex items-center justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400 animate-in fade-in duration-300">
@@ -122,81 +144,109 @@ function AppContent() {
           </div>
         )}
 
-        <section className="animate-in fade-in slide-in-from-bottom-2 duration-400">
-          <MarketTicker />
-        </section>
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-2 p-1 bg-card/50 border border-border/50 rounded-2xl w-fit">
+          <Button
+            variant={activeTab === 'individual' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('individual')}
+            className={`rounded-xl font-bold transition-all ${activeTab === 'individual' ? 'shadow-lg shadow-primary/20' : ''}`}
+          >
+            Carteira Individual
+          </Button>
+          <Button
+            variant={activeTab === 'batch' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('batch')}
+            className={`rounded-xl font-bold transition-all ${activeTab === 'batch' ? 'shadow-lg shadow-primary/20' : ''}`}
+          >
+            Analise em Lote (CSV)
+          </Button>
+        </div>
 
-        <section className="animate-in fade-in slide-in-from-bottom-3 duration-450">
-          <CotacaoStatus
-            stocks={stocks}
-            lastRefreshed={lastRefreshed}
-            isRefreshing={isRefreshing}
-            onRefresh={manualRefresh}
-          />
-        </section>
-
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} />
-        </section>
-
-        {/* AI Insights */}
-        {stocks.length > 0 && (
-          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <Suspense fallback={<div className="h-24 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
-              <AIInsights stocks={stocks} />
-            </Suspense>
-          </section>
-        )}
-
-        {/* Risk Metrics & DCF Valuation - side by side on large screens */}
-        {stocks.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-5 duration-600">
-            <section>
-              <RiskMetrics stocks={stocks} />
+        {activeTab === 'individual' ? (
+          <div className="space-y-12 animate-in fade-in duration-500">
+            <section className="animate-in fade-in slide-in-from-bottom-2 duration-400">
+              <MarketTicker />
             </section>
-            <section>
-              <DCFValuation stocks={stocks} />
-            </section>
-          </div>
-        )}
 
-        {stocks.length > 0 && (
-          <DashboardIntegrado stocks={stocks} relatorios={relatorios} />
-        )}
-
-        {stocks.length > 0 && (
-          <RelatoriosPanel
-            stocks={stocks}
-            relatorios={relatorios}
-            loading={relatoriosLoading}
-            error={relatoriosError}
-            onRefresh={refetchRelatorios}
-          />
-        )}
-
-        <main className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-          <div className="rounded-2xl border border-border/50 bg-card shadow-2xl overflow-hidden">
-            <div className="border-b border-border/50 bg-muted/30 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
-                Visualização de Mercado
-              </h2>
-              {isRefreshing && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                  Atualizando...
-                </div>
-              )}
-            </div>
-            <div className="p-0">
-              <StocksTable
+            <section className="animate-in fade-in slide-in-from-bottom-3 duration-450">
+              <CotacaoStatus
                 stocks={stocks}
-                onRefreshStock={refreshStock}
-                onRemoveStock={removeStock}
-                onShowChart={(ticker) => setChartTicker(ticker === chartTicker ? null : ticker)}
+                lastRefreshed={lastRefreshed}
+                isRefreshing={isRefreshing}
+                onRefresh={manualRefresh}
               />
-            </div>
+            </section>
+
+            <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} />
+            </section>
+
+            {/* AI Insights */}
+            {stocks.length > 0 && (
+              <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <Suspense fallback={<div className="h-24 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
+                  <AIInsights stocks={stocks} />
+                </Suspense>
+              </section>
+            )}
+
+            {/* Risk Metrics & DCF Valuation - side by side on large screens */}
+            {stocks.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-5 duration-600">
+                <section>
+                  <RiskMetrics stocks={stocks} />
+                </section>
+                <section>
+                  <DCFValuation stocks={stocks} />
+                </section>
+              </div>
+            )}
+
+            {stocks.length > 0 && (
+              <DashboardIntegrado stocks={stocks} relatorios={relatorios} />
+            )}
+
+            {stocks.length > 0 && (
+              <RelatoriosPanel
+                stocks={stocks}
+                relatorios={relatorios}
+                loading={relatoriosLoading}
+                error={relatoriosError}
+                onRefresh={refetchRelatorios}
+              />
+            )}
+
+            <main className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+              <div className="rounded-2xl border border-border/50 bg-card shadow-2xl overflow-hidden">
+                <div className="border-b border-border/50 bg-muted/30 px-6 py-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
+                    Visualização de Mercado
+                  </h2>
+                  {isRefreshing && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      Atualizando...
+                    </div>
+                  )}
+                </div>
+                <div className="p-0">
+                  <StocksTable
+                    stocks={stocks}
+                    onRefreshStock={refreshStock}
+                    onRemoveStock={removeStock}
+                    onShowChart={(ticker) => setChartTicker(ticker === chartTicker ? null : ticker)}
+                  />
+                </div>
+              </div>
+            </main>
           </div>
-        </main>
+        ) : (
+          <div className="animate-in fade-in duration-500">
+            <BatchValuation />
+          </div>
+        )}
 
         {/* Stock Chart */}
         {chartTicker && (

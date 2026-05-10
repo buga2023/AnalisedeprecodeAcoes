@@ -1,0 +1,10 @@
+ticker,avgCost,quantity,dpa,eps,bvps
+PETR4,38.50,100,2.40,5.20,28.30
+ITUB4,25.00,200,1.80,3.10,18.40
+VALE3,68.00,50,8.20,12.50,42.00
+# ticker: codigo da acao na B3 (ex: PETR4)
+# avgCost: seu preco medio de compra
+# quantity: quantidade de acoes que voce possui
+# dpa: dividendos pagos por acao nos ultimos 12 meses
+# eps: lucro por acao (LPA)
+# bvps: valor patrimonial por acao (VPA)

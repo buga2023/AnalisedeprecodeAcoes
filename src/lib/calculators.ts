@@ -2,19 +2,110 @@
  * Lógica de Negócio (Engine) - Calculadoras Fundamentalistas StockGuardian
  */
 
-import type { ScoreBreakdown, ScoreLabel } from "@/types/stock";
+import type { ScoreBreakdown, ScoreLabel, CSVRow, ValuationRow } from "@/types/stock";
 
 /**
- * Cálculo do Valor Intrínseco de Graham
+ * Cálculo do Valor Intrínseco de Graham (Original)
  * Fórmula: VI = sqrt(22,5 * LPA * VPA)
- * @param lpa Lucro por Ação
- * @param vpa Valor Patrimonial por Ação
- * @returns Valor Intrínseco estimado
  */
 export const calculateGrahamValue = (lpa: number, vpa: number): number => {
   if (lpa <= 0 || vpa <= 0) return 0;
   return Math.sqrt(22.5 * lpa * vpa);
 };
+
+/**
+ * Bazin: Preço Teto = DPA / 0,06
+ * Retorna null se dpa <= 0
+ */
+export const calculateBazinCeiling = (dpa: number | null): number | null => {
+  if (dpa === null || dpa <= 0) return null;
+  return dpa / 0.06;
+};
+
+/**
+ * Graham Tradicional: VI = √(22,5 × LPA × VPA)
+ */
+export const calculateGrahamVI = (
+  eps: number | null,
+  bvps: number | null
+): number | null => {
+  if (eps === null || bvps === null || eps <= 0 || bvps <= 0) return null;
+  return Math.sqrt(22.5 * eps * bvps);
+};
+
+/**
+ * Graham Crescimento: VI = LPA × (8,5 + 2g)
+ * g default = 7 (crescimento médio conservador para mercado BR)
+ */
+export const calculateGrahamGrowth = (
+  eps: number | null,
+  growthRate: number = 7
+): number | null => {
+  if (eps === null || eps <= 0) return null;
+  return eps * (8.5 + 2 * growthRate);
+};
+
+/**
+ * Margem de segurança: ((valor - preço) / valor) × 100
+ */
+export const calculateMargin = (
+  fairValue: number | null,
+  currentPrice: number | null
+): number | null => {
+  if (fairValue === null || currentPrice === null || fairValue === 0) return null;
+  return ((fairValue - currentPrice) / fairValue) * 100;
+};
+
+/**
+ * Sinal baseado na margem
+ */
+export const getSignal = (margin: number | null): 'Comprar' | 'Caro' | 'Sem dados' => {
+  if (margin === null) return 'Sem dados';
+  return margin > 0 ? 'Comprar' : 'Caro';
+};
+
+/**
+ * Função principal que monta o ValuationRow completo
+ */
+export function calculateFullValuation(
+  row: CSVRow,
+  currentPrice: number | null,
+  growthRate: number = 7
+): ValuationRow {
+  const bazinCeiling = calculateBazinCeiling(row.dpa);
+  const bazinMargin = calculateMargin(bazinCeiling, currentPrice);
+  
+  const grahamVI = calculateGrahamVI(row.eps, row.bvps);
+  const grahamMargin = calculateMargin(grahamVI, currentPrice);
+  
+  const grahamGrowth = calculateGrahamGrowth(row.eps, growthRate);
+  const grahamGrowthMargin = calculateMargin(grahamGrowth, currentPrice);
+  
+  const roi = (currentPrice && row.avgCost > 0) 
+    ? ((currentPrice - row.avgCost) / row.avgCost) * 100 
+    : null;
+    
+  const patrimony = (currentPrice && row.quantity) 
+    ? currentPrice * row.quantity 
+    : null;
+
+  return {
+    ...row,
+    currentPrice,
+    bazinCeiling,
+    bazinSignal: getSignal(bazinMargin),
+    bazinMargin,
+    grahamVI,
+    grahamSignal: getSignal(grahamMargin),
+    grahamMargin,
+    grahamGrowth,
+    grahamGrowthSignal: getSignal(grahamGrowthMargin),
+    grahamGrowthMargin,
+    roi,
+    patrimony,
+    fetchStatus: currentPrice ? 'success' : 'loading',
+  };
+}
 
 /**
  * Cálculo de Performance (ROI)

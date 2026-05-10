@@ -39,3 +39,46 @@ export interface Relatorio {
   receita: number;
   resultado: 'positivo' | 'negativo';
 }
+
+export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'groq';
+
+export interface AIProviderConfig {
+  provider: AIProvider;
+  apiKey: string;
+}
+
+export interface CSVRow {
+  ticker: string;
+  avgCost: number;
+  dpa: number;
+  eps: number;
+  bvps: number;
+  quantity?: number;
+}
+
+export interface ValuationRow extends CSVRow {
+  currentPrice: number | null;
+  
+  // Bazin
+  bazinCeiling: number | null;
+  bazinSignal: 'Comprar' | 'Caro' | 'Sem dados';
+  bazinMargin: number | null;
+  
+  // Graham Tradicional
+  grahamVI: number | null;
+  grahamSignal: 'Comprar' | 'Caro' | 'Sem dados';
+  grahamMargin: number | null;
+  
+  // Graham com Crescimento
+  grahamGrowth: number | null;
+  grahamGrowthSignal: 'Comprar' | 'Caro' | 'Sem dados';
+  grahamGrowthMargin: number | null;
+  
+  // Rentabilidade
+  roi: number | null;
+  patrimony: number | null;
+  
+  // Meta
+  fetchStatus: 'loading' | 'success' | 'error';
+  fetchError?: string;
+}

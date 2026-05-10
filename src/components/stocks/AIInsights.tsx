@@ -10,16 +10,14 @@ import {
     BarChart3,
     RefreshCw,
     Key,
-    X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-    fetchGroqInsights,
-    getStoredGroqKey,
-    setStoredGroqKey,
-} from "@/lib/groq";
-import type { GroqResponse } from "@/lib/groq";
+    fetchAIInsights,
+} from "@/lib/ai";
+import type { AIResponse } from "@/lib/ai";
+import { useAIProvider } from "@/hooks/useAIProvider";
+import { AIProviderSettings } from "./AIProviderSettings";
 import type { Stock } from "@/types/stock";
 
 interface AIInsightsProps {
@@ -66,12 +64,11 @@ const sentimentConfig = {
 };
 
 export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
-    const [groqKey, setGroqKey] = useState(getStoredGroqKey);
-    const [keyInput, setKeyInput] = useState(groqKey);
+    const { providerConfig, hasConfig } = useAIProvider();
     const [showKeyConfig, setShowKeyConfig] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [response, setResponse] = useState<GroqResponse | null>(null);
+    const [response, setResponse] = useState<AIResponse | null>(null);
     const [lastAnalyzedTickers, setLastAnalyzedTickers] = useState<string>("");
     const hasAutoFetched = useRef(false);
 
@@ -97,13 +94,17 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
     // Buscar insights do Groq
     const fetchInsights = useCallback(async () => {
         if (stocks.length === 0) return;
+        if (!providerConfig) {
+            setShowKeyConfig(true);
+            return;
+        }
 
         setIsLoading(true);
         setError(null);
 
         try {
             const portfolioData = preparePortfolioData();
-            const result = await fetchGroqInsights(groqKey || undefined, portfolioData);
+            const result = await fetchAIInsights(providerConfig, portfolioData);
             setResponse(result);
             setLastAnalyzedTickers(stocks.map((s) => s.ticker).join(","));
         } catch (err) {
@@ -111,7 +112,7 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
         } finally {
             setIsLoading(false);
         }
-    }, [groqKey, stocks, preparePortfolioData]);
+    }, [providerConfig, stocks, preparePortfolioData]);
 
     // Auto-fetch na primeira vez que temos stocks
     useEffect(() => {
@@ -126,24 +127,8 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
         }
     }, [stocks, response, isLoading, fetchInsights]);
 
-    const handleSaveKey = () => {
-        const trimmed = keyInput.trim();
-        setStoredGroqKey(trimmed);
-        setGroqKey(trimmed);
-        setShowKeyConfig(false);
-        if (trimmed && stocks.length > 0) {
-            setTimeout(() => {
-                hasAutoFetched.current = false;
-            }, 100);
-        }
-    };
-
-    const handleRemoveKey = () => {
-        setStoredGroqKey("");
-        setGroqKey("");
-        setKeyInput("");
-        setResponse(null);
-        hasAutoFetched.current = false;
+    const toggleConfig = () => {
+        setShowKeyConfig(!showKeyConfig);
     };
 
     if (stocks.length === 0) return null;
@@ -181,16 +166,16 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            onClick={() => setShowKeyConfig(!showKeyConfig)}
-                            title="Configurar API Groq"
+                            onClick={toggleConfig}
+                            title="Configurar IA"
                         >
                             <Key className="h-3.5 w-3.5" />
                         </Button>
                         {!isLoading && (
                             <div className="flex items-center gap-1.5">
-                                <span className={`size-2 rounded-full ${groqKey ? 'bg-emerald-400' : 'bg-primary/50'} animate-pulse`} />
+                                <span className={`size-2 rounded-full ${hasConfig ? 'bg-emerald-400' : 'bg-primary/50'} animate-pulse`} />
                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                    {groqKey ? 'Chave Pessoal' : 'Chave do Servidor'}
+                                    {hasConfig ? providerConfig?.provider : 'Sem Chave'}
                                 </span>
                             </div>
                         )}
@@ -200,68 +185,33 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
             </div>
 
             <div className="p-6 space-y-4">
-                {/* Config da API Key */}
+                {/* Config da IA */}
                 {showKeyConfig && (
-                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Key className="h-4 w-4 text-primary" />
-                            <h3 className="text-sm font-bold">Configuracao da API Groq</h3>
-                        </div>
-                        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                            Obtenha sua chave gratuita em{" "}
-                            <a
-                                href="https://console.groq.com/keys"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary font-bold hover:underline"
-                            >
-                                console.groq.com/keys
-                            </a>
-                            . O modelo Llama 3.3 70B e gratuito com limites generosos de uso.
-                        </p>
-                        <div className="flex gap-2">
-                            <Input
-                                type="password"
-                                placeholder="Cole sua chave da API Groq aqui (gsk_...)"
-                                className="flex-1 bg-slate-950/50 border-border focus:border-primary focus:ring-1 focus:ring-primary h-9 font-mono text-xs"
-                                value={keyInput}
-                                onChange={(e) => setKeyInput(e.target.value)}
-                            />
-                            <Button
-                                onClick={handleSaveKey}
-                                className="h-9 bg-primary hover:bg-blue-600 font-bold text-xs px-4"
-                            >
-                                Salvar
-                            </Button>
-                            {groqKey && (
-                                <Button
-                                    variant="outline"
-                                    className="h-9 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 text-xs"
-                                    onClick={handleRemoveKey}
-                                >
-                                    Remover
-                                </Button>
-                            )}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 text-muted-foreground"
-                                onClick={() => setShowKeyConfig(false)}
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
+                    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                        <AIProviderSettings />
                     </div>
                 )}
 
                 {/* Info sobre Chave da API */}
-                {!groqKey && !showKeyConfig && !response && !isLoading && (
-                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/5 border border-primary/20 mb-4">
-                        <Key className="h-4 w-4 text-primary shrink-0" />
-                        <p className="text-[10px] text-muted-foreground leading-tight">
-                            Usando a <span className="text-primary font-bold">Chave Global do Servidor</span>. 
-                            Você pode configurar sua própria chave clicando no ícone de chave acima para ter limites exclusivos.
-                        </p>
+                {!hasConfig && !showKeyConfig && !response && !isLoading && (
+                    <div className="flex flex-col items-center gap-4 px-6 py-10 rounded-xl bg-primary/5 border border-primary/20 text-center">
+                        <div className="p-3 rounded-full bg-primary/10">
+                            <Key className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-white">IA Não Configurada</h3>
+                            <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                                Configure seu provedor preferido (OpenAI, Claude ou Gemini) para receber analises detalhadas do seu portfolio.
+                            </p>
+                        </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="border-primary/30 text-primary hover:bg-primary/10"
+                            onClick={() => setShowKeyConfig(true)}
+                        >
+                            Configurar Agora
+                        </Button>
                     </div>
                 )}
 
@@ -299,7 +249,7 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                               <RefreshCw className="h-3 w-3 mr-1" />
                               Tentar novamente
                           </Button>
-                          {!groqKey && (
+                          {!hasConfig && (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -307,7 +257,7 @@ export const AIInsights: React.FC<AIInsightsProps> = ({ stocks }) => {
                                 onClick={() => setShowKeyConfig(true)}
                             >
                                 <Key className="h-3 w-3 mr-1" />
-                                Configurar minha chave
+                                Configurar IA
                             </Button>
                           )}
                         </div>

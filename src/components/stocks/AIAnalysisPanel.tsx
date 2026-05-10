@@ -1,15 +1,3 @@
-/**
- * Painel de Analise IA por acao individual
- *
- * Estados visuais:
- * - idle: Botao "Analisar com IA"
- * - loading: Spinner com etapas (coletando dados / analisando)
- * - error: Mensagem de erro + botao "Tentar novamente"
- * - success: Painel completo com resumo, recomendacao, red flags, etc.
- *
- * Reutiliza a mesma Groq API key do AIInsights (localStorage: stocks-ai-groq-key)
- */
-
 import React, { useState } from "react";
 import {
   Bot,
@@ -26,8 +14,8 @@ import {
   Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getStoredGroqKey } from "@/lib/groq";
-import { analisarAcaoComIA, type AnaliseIA, type DadosQuantitativos } from "@/lib/groqAnalysis";
+import { analisarAcaoComIA, type AnaliseIA, type DadosQuantitativos } from "@/lib/ai";
+import { useAIProvider } from "@/hooks/useAIProvider";
 
 type Status = "idle" | "loading-scraping" | "loading-ai" | "error" | "success";
 
@@ -85,14 +73,17 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
   debtToEbitda,
   netMargin,
 }) => {
+  const { providerConfig, hasConfig } = useAIProvider();
   const [status, setStatus] = useState<Status>("idle");
   const [analise, setAnalise] = useState<AnaliseIA | null>(null);
   const [erro, setErro] = useState<string>("");
 
-  const groqKey = getStoredGroqKey();
-
   const executarAnalise = async () => {
-    setStatus("loading-scraping");
+    if (!providerConfig) {
+      setErro("IA nao configurada. Configure seu provedor preferido no painel de insights acima.");
+      setStatus("error");
+      return;
+    }
 
     setStatus("loading-scraping");
     setErro("");
@@ -112,15 +103,13 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
         netMargin,
       };
 
-      // Simular transicao de etapa apos um breve delay
-      // (o scraping acontece dentro do analisarAcaoComIA)
       const timeoutId = setTimeout(() => setStatus("loading-ai"), 2000);
 
       const resultado = await analisarAcaoComIA(
+        providerConfig,
         ticker,
         nomeEmpresa,
-        dados,
-        groqKey || undefined
+        dados
       );
 
       clearTimeout(timeoutId);
@@ -135,13 +124,13 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
   };
 
   // Info sobre chave (opcional agora)
-  const renderKeyInfo = () => {
-    if (groqKey) return null;
+  const renderStatusInfo = () => {
+    if (hasConfig) return null;
     return (
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10 mb-2">
         <Key className="h-3 w-3 text-primary/60" />
         <p className="text-[10px] text-muted-foreground">
-          Usando chave global do servidor.
+          IA nao configurada. Clique no ícone de chave no painel de insights para configurar.
         </p>
       </div>
     );
@@ -151,12 +140,13 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
   if (status === "idle") {
     return (
       <div className="flex flex-col gap-2">
-        {renderKeyInfo()}
+        {renderStatusInfo()}
         <Button
           onClick={executarAnalise}
           variant="outline"
           size="sm"
-          className="h-8 gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 text-xs font-bold transition-all w-fit"
+          disabled={!hasConfig}
+          className="h-8 gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 text-xs font-bold transition-all w-fit disabled:opacity-50"
         >
           <Bot className="h-3.5 w-3.5" />
           Analisar com IA
@@ -181,7 +171,7 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
           <span className="text-[10px] text-muted-foreground">
             {status === "loading-scraping"
               ? "Buscando dados de RI no Investidor10 / StatusInvest"
-              : "Processando com Llama 3.3 70B via Groq"}
+              : `Processando com ${providerConfig?.provider.toUpperCase()}`}
           </span>
         </div>
       </div>
