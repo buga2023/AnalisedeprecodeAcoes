@@ -15,11 +15,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // Proxy local para TODAS as Netlify Functions em desenvolvimento
       '/api': {
-        target: 'http://localhost:8888',
+        target: 'http://localhost:3000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/.netlify/functions'),
       },
     },
   },

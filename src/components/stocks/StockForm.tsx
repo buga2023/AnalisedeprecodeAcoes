@@ -23,7 +23,7 @@ interface FetchedData {
     vpa: number;
 }
 
-export const StockForm: React.FC<StockFormProps> = ({ onAddStock, lastAdded, token }) => {
+export const StockForm: React.FC<StockFormProps> = ({ onAddStock, lastAdded }) => {
     const [tickerInput, setTickerInput] = useState("");
     const [cost, setCost] = useState("");
     const [quantity, setQuantity] = useState("");
@@ -61,7 +61,7 @@ export const StockForm: React.FC<StockFormProps> = ({ onAddStock, lastAdded, tok
             setIsFetching(true);
 
             try {
-                const quote = await fetchStockQuote(ticker, token || undefined);
+                const quote = await fetchStockQuote(ticker);
                 setFetchedData({
                     ticker: quote.symbol,
                     price: quote.regularMarketPrice,
@@ -78,7 +78,7 @@ export const StockForm: React.FC<StockFormProps> = ({ onAddStock, lastAdded, tok
                 setIsFetching(false);
             }
         },
-        [token, clearResults]
+        [clearResults]
     );
 
     // Effective values (override or fetched)

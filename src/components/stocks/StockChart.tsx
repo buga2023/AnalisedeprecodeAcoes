@@ -38,7 +38,7 @@ function formatPrice(value: number): string {
     return `R$ ${value.toFixed(2)}`;
 }
 
-export const StockChart: React.FC<StockChartProps> = ({ ticker, token, onClose }) => {
+export const StockChart: React.FC<StockChartProps> = ({ ticker, onClose }) => {
     const [range, setRange] = useState<HistoryRange>("5d");
     const [data, setData] = useState<HistoricalDataPoint[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -51,7 +51,7 @@ export const StockChart: React.FC<StockChartProps> = ({ ticker, token, onClose }
         setError(null);
         setTooltip(null);
         try {
-            const history = await fetchStockHistory(ticker, range, token || undefined);
+            const history = await fetchStockHistory(ticker, range);
             const filtered = history.filter((p) => p.close > 0);
             setData(filtered);
         } catch (err) {
@@ -60,7 +60,7 @@ export const StockChart: React.FC<StockChartProps> = ({ ticker, token, onClose }
         } finally {
             setIsLoading(false);
         }
-    }, [ticker, range, token]);
+    }, [ticker, range]);
 
     useEffect(() => {
         loadData();

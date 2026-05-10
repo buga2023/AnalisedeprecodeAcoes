@@ -8,12 +8,10 @@ import { DCFValuation } from "@/components/stocks/DCFValuation";
 import { CotacaoStatus } from "@/components/stocks/CotacaoStatus";
 import { DashboardIntegrado } from "@/components/stocks/DashboardIntegrado";
 import { RelatoriosPanel } from "@/components/stocks/RelatoriosPanel";
-import { LayoutDashboard, TrendingUp, RefreshCw, Settings, Key, Wifi, WifiOff, X } from "lucide-react";
+import { LayoutDashboard, TrendingUp, RefreshCw, Wifi, X } from "lucide-react";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { useRelatorios } from "@/hooks/useRelatorios";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { Stock } from "@/types/stock";
 
 const AIInsights = lazy(() => import("@/components/stocks/AIInsights"));
@@ -24,8 +22,6 @@ const StockChart = lazy(() =>
 function AppContent() {
   const {
     stocks,
-    token,
-    updateToken,
     isRefreshing,
     error,
     clearError,
@@ -41,10 +37,8 @@ function AppContent() {
     loading: relatoriosLoading,
     error: relatoriosError,
     refetch: refetchRelatorios,
-  } = useRelatorios(stocks.map((stock) => stock.ticker), token || undefined);
+  } = useRelatorios(stocks.map((stock) => stock.ticker));
 
-  const [showSettings, setShowSettings] = useState(false);
-  const [tokenInput, setTokenInput] = useState(token);
   const [lastAdded, setLastAdded] = useState<Stock | null>(null);
   const [chartTicker, setChartTicker] = useState<string | null>(null);
 
@@ -60,11 +54,6 @@ function AppContent() {
       return true;
     }
     return false;
-  };
-
-  const handleSaveToken = () => {
-    updateToken(tokenInput.trim());
-    setShowSettings(false);
   };
 
   return (
@@ -147,7 +136,7 @@ function AppContent() {
         </section>
 
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} token={token} />
+          <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} />
         </section>
 
         {/* AI Insights */}
@@ -215,13 +204,11 @@ function AppContent() {
             <Suspense fallback={<div className="h-80 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
               <StockChart
                 ticker={chartTicker}
-                token={token}
                 onClose={() => setChartTicker(null)}
               />
             </Suspense>
           </section>
         )}
-
         <footer className="text-center text-sm text-muted-foreground pt-12 border-t border-border/30">
           <div className="flex justify-center gap-6 mb-4">
             <span className="hover:text-primary transition-colors cursor-pointer">Documentação</span>
