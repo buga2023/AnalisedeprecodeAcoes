@@ -36,13 +36,16 @@ export default async function handler(
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request.body),
+        body: JSON.stringify(request.body || {}),
         signal: controller.signal,
       });
 
       if (!groqRes.ok) {
-        const errorData = await groqRes.json().catch(() => ({}));
-        return response.status(groqRes.status).json(errorData);
+        const errorText = await groqRes.text().catch(() => "Erro desconhecido na Groq");
+        console.warn(`[groq] Erro da API: ${groqRes.status}`, errorText);
+        return response.status(200).json({ 
+          choices: [{ message: { content: "Desculpe, não consegui gerar a análise agora. Tente novamente em instantes." } }] 
+        });
       }
 
       const data = await groqRes.json();
@@ -51,10 +54,9 @@ export default async function handler(
       clearTimeout(timeoutId);
     }
   } catch (error) {
-    console.error("Erro na proxy da Groq API:", error);
-    return response.status(500).json({ 
-      error: "Erro na proxy da Groq API",
-      details: error instanceof Error ? error.message : String(error)
+    console.error("Erro fatal na Groq API:", error);
+    return response.status(200).json({ 
+      choices: [{ message: { content: "O serviço de IA está temporariamente instável. Por favor, tente novamente." } }] 
     });
   }
 }

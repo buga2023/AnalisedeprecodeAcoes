@@ -2,8 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 /**
  * PROXY 100% YAHOO FINANCE
- * Converte dados do Yahoo Finance para formato compatível com Brapi
- * Ideal para produção (sem limites de requisições)
+ * Substituto robusto para o sistema de cotações e fundamentos.
+ * Focado em estabilidade absoluta para produção.
  */
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
@@ -17,6 +17,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
   const endpoint = String(request.query.endpoint || "");
   
   try {
+    // 1. COTAÇÕES E FUNDAMENTOS
     if (endpoint.includes('/quote/')) {
       const tickersRaw = endpoint.split('/').pop() || "";
       const tickers = tickersRaw.split(',').map(t => t.trim()).filter(t => t !== "");
@@ -33,11 +34,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
         tickers.map(async (t) => {
           const ticker = t.toUpperCase();
           try {
-            // 1. Buscar dados básicos (preço, change)
             const chartData = await fetchYahooChart(ticker, range, interval);
             if (!chartData) return null;
 
-            // 2. Se pedir fundamentos, buscar dados adicionais
             if (modules.includes('financialData') || modules.includes('defaultKeyStatistics')) {
               const summaryData = await fetchYahooSummary(ticker);
               return mergeYahooData(chartData, summaryData);
@@ -45,7 +44,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
             return chartData;
           } catch (err) {
-            console.error(`[brapi] Erro ao processar ${ticker}:`, err);
+            console.error(`[api] Falha silenciosa para ${ticker}:`, err);
             return null;
           }
         })
@@ -54,45 +53,27 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const validResults = results.filter((r) => r !== null);
 
       if (validResults.length === 0) {
-        return response.status(404).json({
-          error: `Nenhum ticker encontrado: ${tickersRaw}`
-        });
+        return response.status(404).json({ error: "Ativos não encontrados" });
       }
 
       return response.status(200).json({
         results: validResults,
         requestedAt: new Date().toISOString(),
-        took: "0ms",
-        source: "Yahoo Finance"
+        source: "Yahoo Finance Engine"
       });
     }
 
-    // 3. ROTA DE PESQUISA (Autocomplete similar ao dev da Brapi)
+    // 2. BUSCA / AUTOCOMPLETE
     if (endpoint.includes('/search')) {
       const q = String(request.query.q || "");
       if (!q) return response.status(200).json({ stocks: [] });
 
-      const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0`;
-      const sRes = await fetch(searchUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      
-      if (!sRes.ok) return response.status(200).json({ stocks: [] });
-      
-      const sData = await sRes.json();
-      const stocks = (sData.quotes || []).map((s: any) => ({
-        stock: s.symbol.replace('.SA', ''),
-        name: s.shortname || s.longname || s.symbol,
-        type: s.quoteType,
-        region: s.region
-      }));
-
+      const stocks = await fetchYahooSearch(q);
       return response.status(200).json({ stocks });
     }
 
-    // 4. ROTA DE LISTAGEM (Disponíveis)
+    // 3. ATIVOS DISPONÍVEIS (LISTA INICIAL)
     if (endpoint.includes('/available')) {
-      // Lista expandida das principais da B3 para o dropdown inicial
       return response.status(200).json({
         stocks: [
           "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "MGLU3", "WEGE3", "RENT3", "SUZB3", 
@@ -102,63 +83,36 @@ export default async function handler(request: VercelRequest, response: VercelRe
       });
     }
 
-    return response.status(404).json({ error: "Endpoint não suportado" });
+    return response.status(404).json({ error: "Rota não mapeada" });
 
   } catch (error) {
-    console.error("[brapi] Erro:", error);
-    return response.status(500).json({
-      error: "Erro ao processar requisição",
-      details: error instanceof Error ? error.message : "Erro desconhecido"
-    });
+    console.error("[api] Erro fatal:", error);
+    return response.status(500).json({ error: "Erro interno no servidor" });
   }
 }
 
-// ============================================================================
-// YAHOO FINANCE: PREÇOS E GRÁFICOS
-// ============================================================================
-async function fetchYahooChart(
-  ticker: string,
-  range: string,
-  interval: string
-): Promise<any> {
+async function fetchYahooChart(ticker: string, range: string, interval: string) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 7000);
 
   try {
-    // Adiciona .SA para ações brasileiras
     const symbol = ticker.includes('.') || ticker.includes('-') ? ticker : `${ticker}.SA`;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
 
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0' }
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     });
 
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      console.warn(`[yahoo-chart] Status ${res.status} para ${symbol}`);
-      return null;
-    }
-
+    if (!res.ok) return null;
     const data = await res.json();
     const result = data.chart?.result?.[0];
-
-    if (!result) {
-      console.warn(`[yahoo-chart] Sem dados para ${symbol}`);
-      return null;
-    }
+    if (!result || !result.meta) return null;
 
     const meta = result.meta;
     const timestamps = result.timestamp || [];
-    const quotes = result.indicators?.quote?.[0];
+    const quotes = result.indicators?.quote?.[0] || {};
 
-    if (!quotes) {
-      console.warn(`[yahoo-chart] Sem cotações para ${symbol}`);
-      return null;
-    }
-
-    // Mapear histórico de preços
     const historicalDataPrice = timestamps
       .map((ts: number, i: number) => ({
         date: ts,
@@ -168,7 +122,7 @@ async function fetchYahooChart(
         close: quotes.close?.[i] || 0,
         volume: quotes.volume?.[i] || 0
       }))
-      .filter((p: any) => p.close && p.close > 0);
+      .filter((p: any) => p.close > 0);
 
     return {
       symbol: ticker,
@@ -177,30 +131,20 @@ async function fetchYahooChart(
       currency: meta.currency || "BRL",
       regularMarketPrice: meta.regularMarketPrice || 0,
       regularMarketChange: (meta.regularMarketPrice || 0) - (meta.previousClose || 0),
-      regularMarketChangePercent:
-        meta.previousClose && meta.previousClose > 0
-          ? (((meta.regularMarketPrice || 0) - meta.previousClose) / meta.previousClose) * 100
-          : 0,
-      regularMarketTime: meta.regularMarketTime
-        ? new Date(meta.regularMarketTime * 1000).toISOString()
-        : new Date().toISOString(),
+      regularMarketChangePercent: meta.previousClose ? (((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100) : 0,
+      regularMarketTime: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : new Date().toISOString(),
       historicalDataPrice: historicalDataPrice
     };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    console.error(`[yahoo-chart] Erro ao buscar ${ticker}:`, err instanceof Error ? err.message : err);
-    return null;
-  }
+  } catch { return null; }
+  finally { clearTimeout(timeoutId); }
 }
 
-// YAHOO: INDICADORES FUNDAMENTALISTAS (ROE, DÍVIDA, LUCRO, BALANÇO, FLUXO)
-async function fetchYahooSummary(ticker: string): Promise<any> {
+async function fetchYahooSummary(ticker: string) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 7000);
 
   try {
     const symbol = ticker.includes('.') || ticker.includes('-') ? ticker : `${ticker}.SA`;
-    // Adicionamos módulos de Balanço (Balance Sheet) e Fluxo de Caixa (Cash Flow)
     const modules = "defaultKeyStatistics,financialData,incomeStatementHistoryQuarterly,balanceSheetHistoryQuarterly,cashflowStatementHistoryQuarterly";
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
 
@@ -209,27 +153,21 @@ async function fetchYahooSummary(ticker: string): Promise<any> {
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
 
-    clearTimeout(timeoutId);
-
     if (!res.ok) return {};
-
     const data = await res.json();
     const result = data.quoteSummary?.result?.[0];
-
     if (!result) return {};
 
     const stats = result.defaultKeyStatistics || {};
     const fin = result.financialData || {};
-    
-    // Pegamos os dados mais recentes do Balanço e Fluxo de Caixa
-    const balanceSheet = result.balanceSheetHistoryQuarterly?.balanceSheetStatements?.[0] || {};
-    const cashFlow = result.cashflowStatementHistoryQuarterly?.cashflowStatements?.[0] || {};
+    const balance = result.balanceSheetHistoryQuarterly?.balanceSheetStatements?.[0] || {};
+    const cash = result.cashflowStatementHistoryQuarterly?.cashflowStatements?.[0] || {};
 
     return {
       earningsPerShare: stats.trailingEps?.raw || 0,
       bookValue: stats.bookValue?.raw || 0,
       priceEarnings: stats.trailingPE?.raw || 0,
-      dividendYield: (stats.dividendYield?.raw || 0) * 100, 
+      dividendYield: (stats.dividendYield?.raw || 0) * 100,
       enterpriseValue: stats.enterpriseValue?.raw || 0,
       financialData: {
         returnOnEquity: (fin.returnOnEquity?.raw || 0) * 100,
@@ -237,37 +175,45 @@ async function fetchYahooSummary(ticker: string): Promise<any> {
         ebitda: fin.ebitda?.raw || 0,
         profitMargins: (fin.profitMargins?.raw || 0) * 100,
         totalRevenue: fin.totalRevenue?.raw || 0,
-        // Novos dados extraídos do Balanço e Fluxo de Caixa
-        currentRatio: fin.currentRatio?.raw || (balanceSheet.totalCurrentAssets?.raw / balanceSheet.totalCurrentLiabilities?.raw) || 0,
+        currentRatio: fin.currentRatio?.raw || (balance.totalCurrentAssets?.raw / balance.totalCurrentLiabilities?.raw) || 0,
         debtToEquity: fin.debtToEquity?.raw || (fin.totalDebt?.raw / stats.bookValue?.raw) || 0,
-        freeCashflow: fin.freeCashflow?.raw || cashFlow.totalCashFromOperatingActivities?.raw + cashFlow.capitalExpenditures?.raw || 0
+        freeCashflow: fin.freeCashflow?.raw || (cash.totalCashFromOperatingActivities?.raw + cash.capitalExpenditures?.raw) || 0
       }
     };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    return {};
-  }
+  } catch { return {}; }
+  finally { clearTimeout(timeoutId); }
 }
 
-// ============================================================================
-// MESCLAR DADOS DO YAHOO COM FORMATO BRAPI
-// ============================================================================
-function mergeYahooData(chartData: any, summaryData: any): any {
+async function fetchYahooSearch(q: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.quotes || []).map((s: any) => ({
+      stock: s.symbol.replace('.SA', ''),
+      name: s.shortname || s.longname || s.symbol,
+      type: s.quoteType,
+      region: s.region
+    }));
+  } catch { return []; }
+  finally { clearTimeout(timeoutId); }
+}
+
+function mergeYahooData(chartData: any, summaryData: any) {
   return {
     ...chartData,
-    earningsPerShare: summaryData.earningsPerShare ?? 0,
-    bookValue: summaryData.bookValue ?? 0,
-    priceEarnings: summaryData.priceEarnings ?? 0,
-    dividendYield: summaryData.dividendYield ?? 0,
-    enterpriseValue: summaryData.enterpriseValue ?? 0,
+    ...summaryData,
     financialData: {
-      returnOnEquity: summaryData.financialData?.returnOnEquity ?? 0,
-      totalDebt: summaryData.financialData?.totalDebt ?? 0,
-      ebitda: summaryData.financialData?.ebitda ?? 0,
-      profitMargins: summaryData.financialData?.profitMargins ?? 0,
-      totalRevenue: summaryData.financialData?.totalRevenue ?? 0,
-      debtToEquity: summaryData.financialData?.debtToEquity ?? 0,
-      currentRatio: summaryData.financialData?.currentRatio ?? 0
+      ...chartData.financialData,
+      ...summaryData.financialData
     }
   };
 }

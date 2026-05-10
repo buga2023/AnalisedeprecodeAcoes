@@ -127,10 +127,11 @@ export default async function handler(
 
     return response.status(200).json({ ticker, conteudo, fonte });
   } catch (error) {
-    console.error("Erro no proxy Scrape:", error);
-    return response.status(500).json({ 
-      error: "Falha ao realizar scraping",
-      details: error instanceof Error ? error.message : String(error)
+    console.error("Erro fatal no proxy Scrape:", error);
+    return response.status(200).json({ 
+      ticker: request.query.ticker,
+      conteudo: "",
+      error: "Serviço de análise de dados indisponível no momento."
     });
   }
 }

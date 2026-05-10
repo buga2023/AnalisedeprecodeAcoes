@@ -19,9 +19,8 @@ export default async function handler(
       return response.status(204).end();
     }
 
-    // 1. Tentar Yahoo Finance (Alta Estabilidade e Gratuito em Prod)
+    // 1. Tentar Yahoo Finance (Alta Estabilidade)
     try {
-      // Moedas e Cripto via Yahoo
       const symbols = ["USDBRL=X", "EURBRL=X", "BTC-BRL", "ETH-BRL"];
       const results = await Promise.all(symbols.map(s => fetchYahooMarket(s)));
       
@@ -31,7 +30,7 @@ export default async function handler(
       });
 
       if (Object.keys(mappedData).length >= 2) {
-        // Mock Metais (ou buscar se necessário)
+        // Mock Metais estável
         mappedData['XAUUSD'] = { bid: '2000', pctChange: '0.5' };
         mappedData['XAGUSD'] = { bid: '23', pctChange: '-0.2' };
 
@@ -39,7 +38,7 @@ export default async function handler(
         return response.status(200).json(mappedData);
       }
     } catch (e) {
-      console.warn("Yahoo Market falhou, tentando AwesomeAPI:", e);
+      console.warn("Yahoo Market falhou:", e);
     }
 
     // 2. Fallback AwesomeAPI com Cache
@@ -53,60 +52,72 @@ export default async function handler(
     const apiUrl = `https://economia.awesomeapi.com.br/last/${TICKERS}`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // Timeout menor para fallback
 
     try {
-      const res = await fetch(apiUrl, { signal: controller.signal });
+      const res = await fetch(apiUrl, { 
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        if (cachedData) {
-          response.setHeader('X-Cache', 'STALE');
-          return response.status(200).json(cachedData);
-        }
-        throw new Error(`AwesomeAPI retornou status ${res.status}`);
+        if (cachedData) return response.status(200).json(cachedData);
+        throw new Error(`AwesomeAPI: ${res.status}`);
       }
 
       const data = await res.json();
       cachedData = data;
       lastFetchTime = Date.now();
 
-      response.setHeader('X-Cache', 'MISS');
       return response.status(200).json(data);
+    } catch (err) {
+      if (cachedData) return response.status(200).json(cachedData);
+      throw err;
     } finally {
       clearTimeout(timeoutId);
     }
   } catch (error) {
-    console.error("Erro total no Market Proxy:", error);
-    if (cachedData) {
-      response.setHeader('X-Cache', 'STALE_FATAL');
-      return response.status(200).json(cachedData);
-    }
-    return response.status(500).json({ error: "Serviço de cotações indisponível" });
+    console.error("Erro fatal no Market Proxy:", error);
+    return response.status(200).json(cachedData || {}); // Nunca retornar 500, prefira vazio
   }
 }
 
 async function fetchYahooMarket(symbol: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1d`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const res = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0' } 
+    });
+    clearTimeout(timeoutId);
+
     if (!res.ok) return null;
     
     const data = await res.json();
-    const result = data.chart.result?.[0];
-    if (!result) return null;
+    const result = data.chart?.result?.[0];
+    if (!result || !result.meta) return null;
 
     const meta = result.meta;
-    const key = symbol.replace('=X', '').replace('-', ''); // USDBRL, BTCBRL...
+    const key = symbol.replace('=X', '').replace('-', '');
+    
+    const current = meta.regularMarketPrice || 0;
+    const prev = meta.previousClose || current;
+    const change = prev !== 0 ? ((current - prev) / prev) * 100 : 0;
 
     return {
       key,
       data: {
-        bid: String(meta.regularMarketPrice),
-        pctChange: String(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100)
+        bid: String(current),
+        pctChange: String(change.toFixed(2))
       }
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
