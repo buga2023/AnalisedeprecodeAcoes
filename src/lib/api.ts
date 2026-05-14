@@ -55,7 +55,9 @@ export async function fetchStockQuote(
   ticker: string
 ): Promise<BrapiQuoteResult> {
   const url = new URL(BRAPI_PROXY_URL, window.location.origin);
-  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
+  // Não usar encodeURIComponent: URLSearchParams.set já faz URL-encoding,
+  // duplicar resultaria em %252C (vírgula dupla-codificada) e 404 no proxy.
+  url.searchParams.set("endpoint", `/quote/${ticker.toUpperCase()}`);
   url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
   const response = await fetch(url.toString());
@@ -172,8 +174,8 @@ export async function fetchStockHistory(
   range: HistoryRange
 ): Promise<HistoricalDataPoint[]> {
   const interval = RANGE_INTERVAL_MAP[range];
-  const url = new URL(BRAPI_PROXY_URL, window.location.origin); 
-  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin);
+  url.searchParams.set("endpoint", `/quote/${ticker.toUpperCase()}`);
   url.searchParams.set("range", range);
   url.searchParams.set("interval", interval);
 
@@ -204,8 +206,9 @@ export async function fetchMultipleQuotes(
   if (tickers.length === 0) return [];
 
   const tickerString = tickers.map((t) => t.toUpperCase()).join(",");
-  const url = new URL(BRAPI_PROXY_URL, window.location.origin); 
-  url.searchParams.set("endpoint", `/quote/${encodeURIComponent(tickerString)}`);
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin);
+  // Não usar encodeURIComponent na vírgula: URLSearchParams.set já encoda.
+  url.searchParams.set("endpoint", `/quote/${tickerString}`);
   url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
   const response = await fetch(url.toString());

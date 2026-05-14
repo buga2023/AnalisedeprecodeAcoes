@@ -1,12 +1,16 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PraxiaTokens, fmt } from "./tokens";
 import { PraxiaCard } from "./PraxiaCard";
+import { AIBadge } from "./AIBadge";
 import { useRelatorios } from "@/hooks/useRelatorios";
 import type { Relatorio } from "@/types/stock";
+import { fetchFundamentalsFromAI, quartersFromAI } from "@/lib/fundamentals";
 
 interface StockReportsSectionProps {
   ticker: string;
   maxQuarters?: number;
+  /** Preço atual da ação, repassado pro fallback IA fazer cálculos consistentes. */
+  currentPrice?: number;
 }
 
 function formatBigNumber(value: number): string {
@@ -20,12 +24,15 @@ function formatBigNumber(value: number): string {
 export function StockReportsSection({
   ticker,
   maxQuarters = 4,
+  currentPrice,
 }: StockReportsSectionProps) {
   const T = PraxiaTokens;
   const tickers = useMemo(() => [ticker], [ticker]);
   const { relatorios, loading, error, refetch } = useRelatorios(tickers);
+  const [aiQuarters, setAiQuarters] = useState<Relatorio[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
-  const recent: Relatorio[] = useMemo(
+  const realQuarters: Relatorio[] = useMemo(
     () =>
       relatorios
         .filter((r) => r.ticker.toUpperCase() === ticker.toUpperCase())
@@ -33,11 +40,52 @@ export function StockReportsSection({
     [relatorios, ticker, maxQuarters]
   );
 
+  // Quando não há nenhum relatório oficial, busca via IA — ela tenta os 2
+  // últimos trimestres conhecidos + projeção do próximo. Tudo marcado.
+  // Evitamos setState síncrono no body do efeito agendando via microtask.
+  useEffect(() => {
+    let cancelled = false;
+    if (loading) return;
+    if (realQuarters.length > 0) {
+      // limpa o aiQuarters via microtask para não disparar set-state-in-effect
+      Promise.resolve().then(() => {
+        if (!cancelled) setAiQuarters(null);
+      });
+      return;
+    }
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      setAiLoading(true);
+      fetchFundamentalsFromAI(ticker, currentPrice).then((ai) => {
+        if (cancelled) return;
+        setAiQuarters(ai ? quartersFromAI(ai).slice(0, maxQuarters) : []);
+        setAiLoading(false);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker, loading, realQuarters.length, maxQuarters, currentPrice]);
+
+  const recent: Relatorio[] = realQuarters.length > 0 ? realQuarters : aiQuarters ?? [];
+  const isAIFallback = realQuarters.length === 0 && (aiQuarters?.length ?? 0) > 0;
+
   return (
     <PraxiaCard padding={14} style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 13, color: T.ink }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontFamily: T.display,
+            fontWeight: 600,
+            fontSize: 13,
+            color: T.ink,
+          }}
+        >
           Resultados trimestrais
+          {isAIFallback && <AIBadge confianca="media" reference="Pesquisado/projetado por IA" />}
         </div>
         <button
           onClick={() => refetch()}
@@ -59,19 +107,19 @@ export function StockReportsSection({
         </button>
       </div>
 
-      {loading && recent.length === 0 && (
+      {(loading || aiLoading) && recent.length === 0 && (
         <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.ink50 }}>
-          Carregando relatórios…
+          {aiLoading ? "Pesquisando últimos trimestres via IA…" : "Carregando relatórios…"}
         </div>
       )}
 
-      {error && recent.length === 0 && (
+      {error && recent.length === 0 && !aiLoading && (
         <div style={{ fontFamily: T.body, fontSize: 12, color: T.down }}>
           Não foi possível buscar os relatórios. {error}
         </div>
       )}
 
-      {!loading && !error && recent.length === 0 && (
+      {!loading && !aiLoading && !error && recent.length === 0 && (
         <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.ink50, lineHeight: 1.5 }}>
           Sem relatórios disponíveis para {ticker}.
         </div>
@@ -81,6 +129,7 @@ export function StockReportsSection({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {recent.map((r, idx) => {
             const positive = r.resultado === "positivo";
+            const isProjecao = r.tipo === "projecao";
             const date = new Date(r.dataFim);
             const isoDate = isNaN(date.getTime())
               ? r.dataFim
@@ -95,8 +144,12 @@ export function StockReportsSection({
                   gap: 12,
                   padding: "10px 12px",
                   borderRadius: 10,
-                  background: "rgba(255,255,255,0.03)",
-                  border: `0.5px solid ${T.hairline}`,
+                  background: isProjecao
+                    ? `${T.gold}0d`
+                    : "rgba(244,236,223,0.03)",
+                  border: isProjecao
+                    ? `0.5px dashed ${T.goldDim}`
+                    : `0.5px solid ${T.hairline}`,
                 }}
               >
                 <div>
@@ -106,11 +159,21 @@ export function StockReportsSection({
                       fontWeight: 600,
                       fontSize: 13,
                       color: T.ink,
+                      display: "inline-flex",
+                      alignItems: "center",
                     }}
                   >
                     {r.periodo}
+                    {r.aiEstimated && (
+                      <AIBadge
+                        confianca={isProjecao ? "baixa" : "media"}
+                        reference={r.referencia ?? "Pesquisado por IA"}
+                      />
+                    )}
                   </div>
-                  <div style={{ fontFamily: T.body, fontSize: 10, color: T.ink30 }}>{isoDate}</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10, color: T.ink30 }}>
+                    {isProjecao ? "projeção" : isoDate}
+                  </div>
                 </div>
                 <div>
                   <div style={{ fontFamily: T.mono, fontSize: 10, color: T.ink30, letterSpacing: 0.4 }}>
@@ -142,6 +205,20 @@ export function StockReportsSection({
                     R$ {formatBigNumber(r.lucroLiquido)}
                   </div>
                 </div>
+                {r.comentario && (
+                  <div
+                    style={{
+                      gridColumn: "1 / -1",
+                      marginTop: 4,
+                      fontFamily: T.body,
+                      fontSize: 11.5,
+                      color: T.ink70,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {r.comentario}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -154,7 +231,9 @@ export function StockReportsSection({
               textAlign: "right",
             }}
           >
-            fonte: BrAPI/Yahoo · cache 24h
+            {isAIFallback
+              ? "fonte: pesquisa/projeção IA · cache 12h"
+              : "fonte: Yahoo Finance · cache 24h"}
           </div>
         </div>
       )}

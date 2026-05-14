@@ -16,6 +16,7 @@ import { ScreenProfile } from "@/components/praxia/screens/ScreenProfile";
 import { ScreenBatchValuation } from "@/components/praxia/screens/ScreenBatchValuation";
 import { ScreenAlerts } from "@/components/praxia/screens/ScreenAlerts";
 import { ScreenCompare } from "@/components/praxia/screens/ScreenCompare";
+import { ScreenNews } from "@/components/praxia/screens/ScreenNews";
 import { AlertSheet } from "@/components/praxia/AlertSheet";
 import { ChatSheet } from "@/components/praxia/ChatSheet";
 import { QuickWatch } from "@/components/praxia/QuickWatch";
@@ -34,7 +35,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare";
+type Screen = "home" | "market" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news";
 
 interface OrderDraft {
   shares: number;
@@ -223,6 +224,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onOpenProfile={() => setScreen("profile")}
           onOpenChat={() => setChatOpen(true)}
           onOpenAlerts={() => setScreen("alerts")}
+          onOpenNews={() => setScreen("news")}
           activeAlertCount={activeAlerts.length}
         />
       )}
@@ -292,6 +294,10 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onRemoveTicker={(t) => toggleCompareTicker(t)}
           onAddTicker={() => setScreen("market")}
         />
+      )}
+
+      {screen === "news" && (
+        <ScreenNews accent={accent} profile={profile} onBack={() => setScreen("home")} />
       )}
 
       {screen === "stock" && activeStock && (

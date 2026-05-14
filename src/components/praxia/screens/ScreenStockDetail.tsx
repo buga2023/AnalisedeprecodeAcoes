@@ -16,6 +16,7 @@ import {
 import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators";
 import { StockAIAnalysisSection } from "../StockAIAnalysisSection";
 import { StockReportsSection } from "../StockReportsSection";
+import { AIBadge } from "../AIBadge";
 
 interface ScreenStockDetailProps {
   stock: Stock;
@@ -426,6 +427,60 @@ export function ScreenStockDetail({
           </div>
         </PraxiaCard>
 
+        {stock.aiEstimated && stock.aiEstimated.fields.length > 0 && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: `${PraxiaTokens.gold}14`,
+              border: `0.5px solid ${PraxiaTokens.goldDim}`,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <AIBadge confianca="media" size="sm" />
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontFamily: T.body,
+                  fontSize: 12,
+                  color: T.ink,
+                  lineHeight: 1.45,
+                }}
+              >
+                Alguns fundamentos abaixo vieram do fallback de IA porque o Yahoo
+                não retornou dado oficial. Cada um traz o selo <b>IA</b> e a
+                referência no tooltip.
+              </div>
+              {stock.aiEstimated.aviso && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontFamily: T.body,
+                    fontSize: 11,
+                    color: T.ink50,
+                  }}
+                >
+                  {stock.aiEstimated.aviso}
+                </div>
+              )}
+              <div
+                style={{
+                  marginTop: 6,
+                  fontFamily: T.mono,
+                  fontSize: 9.5,
+                  color: T.ink30,
+                  letterSpacing: 0.6,
+                }}
+              >
+                IA · {new Date(stock.aiEstimated.geradoEm).toLocaleString("pt-BR")}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* stats */}
         <div
           style={{
@@ -435,42 +490,69 @@ export function ScreenStockDetail({
             gap: 8,
           }}
         >
-          <Stat label="P/L" value={stock.pl > 0 ? `${stock.pl.toFixed(1)}x` : "N/D"} />
-          <Stat label="P/VP" value={stock.pvp > 0 ? stock.pvp.toFixed(2) : "N/D"} />
-          <Stat
-            label="Div. Yield"
-            value={stock.dividendYield > 0 ? `${(stock.dividendYield * 100).toFixed(2)}%` : "—"}
-          />
-          <Stat label="ROE" value={`${(stock.roe * 100).toFixed(1)}%`} />
-          <Stat
-            label="ROIC"
-            value={
-              stock.roic && stock.roic !== 0
-                ? `${(stock.roic * 100).toFixed(1)}%`
-                : "—"
-            }
-          />
-          <Stat
-            label="ROI (posição)"
-            value={
-              stock.cost > 0
-                ? `${((stock.price / stock.cost - 1) * 100).toFixed(1)}%`
-                : "—"
-            }
-          />
-          <Stat
-            label="Preço-teto (Graham)"
-            value={grahamValue > 0 ? fmt.brl(grahamValue) : "—"}
-          />
-          <Stat
-            label="Margem de seg."
-            value={grahamValue > 0 ? `${margin.toFixed(1)}%` : "—"}
-          />
+          {(() => {
+            const est = stock.aiEstimated;
+            const isAI = (f: string): { confianca: "alta" | "media" | "baixa"; reference?: string } | undefined =>
+              est && est.fields.includes(f)
+                ? { confianca: est.confianca?.[f] ?? "media", reference: est.referencias?.[f] }
+                : undefined;
+            return (
+              <>
+                <Stat
+                  label="P/L"
+                  value={stock.pl > 0 ? `${stock.pl.toFixed(1)}x` : "N/D"}
+                  aiBadge={isAI("pl")}
+                />
+                <Stat
+                  label="P/VP"
+                  value={stock.pvp > 0 ? stock.pvp.toFixed(2) : "N/D"}
+                  aiBadge={isAI("pvp")}
+                />
+                <Stat
+                  label="Div. Yield"
+                  value={stock.dividendYield > 0 ? `${(stock.dividendYield * 100).toFixed(2)}%` : "—"}
+                  aiBadge={isAI("dividendYield")}
+                />
+                <Stat
+                  label="ROE"
+                  value={stock.roe > 0 ? `${(stock.roe * 100).toFixed(1)}%` : "—"}
+                  aiBadge={isAI("roe")}
+                />
+                <Stat
+                  label="ROIC"
+                  value={
+                    stock.roic && stock.roic !== 0
+                      ? `${(stock.roic * 100).toFixed(1)}%`
+                      : "—"
+                  }
+                  aiBadge={isAI("roic")}
+                />
+                <Stat
+                  label="ROI (posição)"
+                  value={
+                    stock.cost > 0
+                      ? `${((stock.price / stock.cost - 1) * 100).toFixed(1)}%`
+                      : "—"
+                  }
+                />
+                <Stat
+                  label="Preço-teto (Graham)"
+                  value={grahamValue > 0 ? fmt.brl(grahamValue) : "—"}
+                  aiBadge={isAI("grahamValue")}
+                />
+                <Stat
+                  label="Margem de seg."
+                  value={grahamValue > 0 ? `${margin.toFixed(1)}%` : "—"}
+                  aiBadge={isAI("marginOfSafety")}
+                />
+              </>
+            );
+          })()}
         </div>
 
         <StockAIAnalysisSection stock={stock} profile={profile} accent={accent} />
 
-        <StockReportsSection ticker={stock.ticker} />
+        <StockReportsSection ticker={stock.ticker} currentPrice={stock.price} />
 
         {isOwned && (
           <div
@@ -542,7 +624,15 @@ export function ScreenStockDetail({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  aiBadge,
+}: {
+  label: string;
+  value: string;
+  aiBadge?: { confianca: "alta" | "media" | "baixa"; reference?: string };
+}) {
   const T = PraxiaTokens;
   return (
     <PraxiaCard padding={12}>
@@ -565,9 +655,12 @@ function Stat({ label, value }: { label: string; value: string }) {
           fontWeight: 500,
           marginTop: 4,
           fontVariantNumeric: "tabular-nums",
+          display: "inline-flex",
+          alignItems: "center",
         }}
       >
         {value}
+        {aiBadge && <AIBadge confianca={aiBadge.confianca} reference={aiBadge.reference} />}
       </div>
     </PraxiaCard>
   );

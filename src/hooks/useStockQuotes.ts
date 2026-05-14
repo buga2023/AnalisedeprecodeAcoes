@@ -4,6 +4,7 @@ import { fetchStockQuote, fetchMultipleQuotes } from "@/lib/api";
 import type { BrapiQuoteResult } from "@/lib/api";
 import { calculateGrahamValue, calculateROIC, calculateStockScore } from "@/lib/calculators";
 import { detectMarket, detectSector, brandColor } from "@/lib/stockMeta";
+import { fetchFundamentalsFromAI, mergeAIFundamentalsIntoStock } from "@/lib/fundamentals";
 
 const STORAGE_KEY = "stocks-ai-portfolio";
 const TOKEN_KEY = "stocks-ai-brapi-token";
@@ -111,16 +112,58 @@ export function setStoredToken(token: string) {
   }
 }
 
+/** Heurística: o stock está com fundamentos zerados o suficiente para pedir
+ *  fallback via IA? P/L, ROE e DY zerados ao mesmo tempo são bom sinal. */
+function needsAIFundamentals(stock: Stock): boolean {
+  const allZero =
+    !(stock.pl > 0) &&
+    !(stock.pvp > 0) &&
+    !(stock.dividendYield > 0) &&
+    !(stock.roe > 0);
+  return allZero;
+}
+
 export function useStockQuotes() {
   const [stocks, setStocks] = useState<Stock[]>(loadStocksFromStorage);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Quais tickers já tentamos fazer fallback IA nesta sessão (evita loop).
+  const aiAttemptedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     saveStocksToStorage(stocks);
   }, [stocks]);
+
+  /**
+   * Para cada stock com fundamentos zerados, chama /api/fundamentals (IA) e
+   * funde os valores estimados. Roda em background, não bloqueia a UI.
+   */
+  const fillMissingFundamentalsViaAI = useCallback(async (currentStocks: Stock[]) => {
+    const candidates = currentStocks.filter(
+      (s) =>
+        needsAIFundamentals(s) &&
+        !s.aiEstimated &&
+        !aiAttemptedRef.current.has(s.ticker)
+    );
+    if (candidates.length === 0) return;
+
+    for (const candidate of candidates) {
+      aiAttemptedRef.current.add(candidate.ticker);
+      const ai = await fetchFundamentalsFromAI(candidate.ticker, candidate.price);
+      if (!ai) continue;
+      setStocks((prev) =>
+        prev.map((s) => (s.ticker === candidate.ticker ? mergeAIFundamentalsIntoStock(s, ai) : s))
+      );
+    }
+  }, []);
+
+  // Dispara o fallback IA toda vez que a carteira muda (incluindo após poll).
+  useEffect(() => {
+    if (stocks.length === 0) return;
+    void fillMissingFundamentalsViaAI(stocks);
+  }, [stocks, fillMissingFundamentalsViaAI]);
 
   const refreshAll = useCallback(async () => {
     if (stocks.length === 0) return;

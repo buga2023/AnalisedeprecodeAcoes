@@ -127,6 +127,12 @@ export const Icon = {
       <path d="M14 7h7v7" />
     </svg>
   ),
+  feed: (p: IconProps = {}) => (
+    <svg {...base(p)}>
+      <path d="M3 5h13a4 4 0 0 1 4 4v10H7a4 4 0 0 1-4-4V5z" />
+      <path d="M7 9h9M7 13h6" />
+    </svg>
+  ),
   star: (p: IconProps = {}) => (
     <svg {...base({ ...p, size: p.size ?? 16 })}>
       <path d="M12 3 9 10l-7 1 5 5-1 7 6-3 6 3-1-7 5-5-7-1-3-7z" />

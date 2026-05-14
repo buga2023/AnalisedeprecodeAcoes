@@ -34,6 +34,7 @@ interface ScreenHomeProps {
   onOpenProfile?: () => void;
   onOpenChat?: () => void;
   onOpenAlerts?: () => void;
+  onOpenNews?: () => void;
   activeAlertCount?: number;
 }
 
@@ -48,6 +49,7 @@ export function ScreenHome({
   onOpenProfile,
   onOpenChat,
   onOpenAlerts,
+  onOpenNews,
   activeAlertCount = 0,
 }: ScreenHomeProps) {
   const T = PraxiaTokens;
@@ -137,6 +139,11 @@ export function ScreenHome({
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {onOpenNews && (
+              <GlassButton onClick={onOpenNews} ariaLabel="Notícias">
+                <Icon.feed size={18} color={T.ink70} />
+              </GlassButton>
+            )}
             {onOpenAlerts && (
               <button
                 onClick={onOpenAlerts}

@@ -42,6 +42,20 @@ export interface Stock {
   sector?: string;
   /** brand color used in the StockAvatar disc */
   brandColor?: string;
+  /**
+   * Marca quais campos vieram de fallback via IA (quando Yahoo retorna zerado).
+   * `fields` lista os campos do Stock que foram preenchidos pela IA; `geradoEm`
+   * é o timestamp; `referencias` mapeia cada campo a uma frase descrevendo a fonte
+   * (ex.: "Release 3T24 PETR4"). UI deve mostrar badge "IA" nesses campos.
+   */
+  aiEstimated?: {
+    fields: string[];
+    geradoEm: string;
+    referencias: Record<string, string>;
+    confianca: Record<string, "alta" | "media" | "baixa">;
+    fontes: string[];
+    aviso: string;
+  };
 }
 
 export interface Relatorio {
@@ -51,6 +65,18 @@ export interface Relatorio {
   lucroLiquido: number;
   receita: number;
   resultado: 'positivo' | 'negativo';
+  /** Quando true, o item foi estimado/projetado pela IA, não é dado oficial. */
+  aiEstimated?: boolean;
+  /** "real" = relatório oficial; "projecao" = projeção da IA. */
+  tipo?: 'real' | 'projecao';
+  /** Referência/fonte (ex.: "Release oficial PETR4 31/10/2024" ou "Projeção IA"). */
+  referencia?: string;
+  /** Comentário curto sobre o trimestre (gerado pela IA quando disponível). */
+  comentario?: string;
+  /** EBITDA absoluto, quando reportado. */
+  ebitda?: number;
+  /** Margem líquida do período (fração 0–1). */
+  margem?: number;
 }
 
 export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'groq';
