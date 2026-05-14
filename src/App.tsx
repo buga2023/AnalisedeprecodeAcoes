@@ -1,274 +1,312 @@
-import { lazy, Suspense, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { LoginScreen } from "@/components/LoginScreen";
-import { StocksTable } from "@/components/stocks/StocksTable";
-import { StockForm } from "@/components/stocks/StockForm";
-import { MarketTicker } from "@/components/stocks/MarketTicker";
-import { RiskMetrics } from "@/components/stocks/RiskMetrics";
-import { DCFValuation } from "@/components/stocks/DCFValuation";
-import { CotacaoStatus } from "@/components/stocks/CotacaoStatus";
-import { DashboardIntegrado } from "@/components/stocks/DashboardIntegrado";
-import { RelatoriosPanel } from "@/components/stocks/RelatoriosPanel";
-import { LayoutDashboard, TrendingUp, RefreshCw, Wifi, X, Settings } from "lucide-react";
+import { AppShell } from "@/components/praxia/AppShell";
+import { BottomNav, type NavTab } from "@/components/praxia/BottomNav";
+import { FloatingPraButton } from "@/components/praxia/FloatingPraButton";
+import { ScreenOnboarding } from "@/components/praxia/screens/ScreenOnboarding";
+import { ScreenQuiz } from "@/components/praxia/screens/ScreenQuiz";
+import { ScreenHome } from "@/components/praxia/screens/ScreenHome";
+import { ScreenMarket } from "@/components/praxia/screens/ScreenMarket";
+import { ScreenStockDetail } from "@/components/praxia/screens/ScreenStockDetail";
+import { ScreenOrder } from "@/components/praxia/screens/ScreenOrder";
+import { ScreenOrderReview } from "@/components/praxia/screens/ScreenOrderReview";
+import { ScreenActivity } from "@/components/praxia/screens/ScreenActivity";
+import { ScreenProfile } from "@/components/praxia/screens/ScreenProfile";
+import { ChatSheet } from "@/components/praxia/ChatSheet";
+import { QuickWatch } from "@/components/praxia/QuickWatch";
+import { PortfolioInsightsModal } from "@/components/praxia/PortfolioInsightsModal";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
-import { useRelatorios } from "@/hooks/useRelatorios";
-import { Button } from "@/components/ui/button";
-import { AIProviderSettings } from "@/components/stocks/AIProviderSettings";
-import { BatchValuation } from "@/components/stocks/BatchValuation";
-import type { Stock } from "@/types/stock";
+import { useInvestorProfile } from "@/hooks/useInvestorProfile";
+import { useTransactions } from "@/hooks/useTransactions";
+import { useUIPreferences } from "@/hooks/useUIPreferences";
+import { useAIProvider } from "@/hooks/useAIProvider";
+import { totalPortfolioValue } from "@/lib/portfolio";
+import type {
+  AIProviderConfig,
+  OrderType,
+  Stock,
+  TransactionType,
+} from "@/types/stock";
 
-const AIInsights = lazy(() => import("@/components/stocks/AIInsights"));
-const StockChart = lazy(() =>
-  import("@/components/stocks/StockChart").then((module) => ({ default: module.StockChart }))
-);
+type Screen = "home" | "market" | "stock" | "order" | "review" | "activity" | "profile";
 
-function AppContent() {
-  const {
-    stocks,
-    isRefreshing,
-    error,
-    clearError,
-    addStock,
-    removeStock,
-    refreshAll,
-    refreshStock,
-    manualRefresh,
-    lastRefreshed,
-  } = useStockQuotes();
-  const {
-    relatorios,
-    loading: relatoriosLoading,
-    error: relatoriosError,
-    refetch: refetchRelatorios,
-  } = useRelatorios(stocks.map((stock) => stock.ticker));
+interface OrderDraft {
+  shares: number;
+  total: number;
+  fee: number;
+  orderType: OrderType;
+  type: TransactionType;
+}
 
-  const [lastAdded, setLastAdded] = useState<Stock | null>(null);
-  const [chartTicker, setChartTicker] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [activeTab, setActiveTab] = useState<'individual' | 'batch'>('individual');
+function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => void }) {
+  const { accent, setAccent, tone, setTone } = useUIPreferences();
+  const { profile, saveProfile, reset: resetProfile } = useInvestorProfile();
+  const { stocks, addStock, applyTransaction, toggleFavorite, error, clearError } =
+    useStockQuotes();
+  const { transactions, record, clear: clearTransactions } = useTransactions();
+  const { providerConfig, setProviderConfig, clearProviderConfig } = useAIProvider();
 
-  const handleAddStock = async (
-    ticker: string,
-    cost: number,
-    quantity: number,
-    overrides?: { lpa?: number; vpa?: number }
-  ): Promise<boolean> => {
-    const result = await addStock(ticker, cost, quantity, overrides);
-    if (result) {
-      setLastAdded(result);
-      return true;
-    }
-    return false;
-  };
+  const [bootScreen, setBootScreen] = useState<"onboarding" | "quiz" | "app">(() => {
+    if (profile) return "app";
+    return "onboarding";
+  });
+
+  const [screen, setScreen] = useState<Screen>("home");
+  const [activeTicker, setActiveTicker] = useState<string | null>(null);
+  const [activeFallback, setActiveFallback] = useState<Stock | null>(null);
+  const [orderDraft, setOrderDraft] = useState<OrderDraft | null>(null);
+  const [pendingType, setPendingType] = useState<TransactionType>("buy");
+  const [quickWatch, setQuickWatch] = useState<Stock | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+
+  // Derive the currently-active stock straight from the portfolio so it
+  // always reflects the latest quote without manual sync. Falls back to a
+  // snapshot for tickers the user inspected via search but hasn't bought.
+  const activeStock = useMemo<Stock | null>(() => {
+    if (!activeTicker) return null;
+    return stocks.find((s) => s.ticker === activeTicker) ?? activeFallback;
+  }, [activeTicker, stocks, activeFallback]);
+
+  const totalValue = useMemo(() => totalPortfolioValue(stocks), [stocks]);
+
+  const openStock = useCallback((s: Stock) => {
+    setActiveTicker(s.ticker);
+    setActiveFallback(s);
+    setQuickWatch(null);
+    setScreen("stock");
+  }, []);
+
+  const startOrder = useCallback((s: Stock, type: TransactionType) => {
+    setActiveTicker(s.ticker);
+    setActiveFallback(s);
+    setPendingType(type);
+    setOrderDraft(null);
+    setQuickWatch(null);
+    setScreen("order");
+  }, []);
+
+  const confirmOrder = useCallback(async () => {
+    if (!activeStock || !orderDraft) return;
+    const ok = await applyTransaction(
+      activeStock.ticker,
+      orderDraft.type,
+      orderDraft.shares,
+      activeStock.price
+    );
+    if (!ok) return;
+    record({
+      ticker: activeStock.ticker,
+      type: orderDraft.type,
+      orderType: orderDraft.orderType,
+      shares: orderDraft.shares,
+      price: activeStock.price,
+      total: orderDraft.total,
+      fee: orderDraft.fee,
+    });
+    setOrderDraft(null);
+    setScreen("activity");
+  }, [activeStock, orderDraft, applyTransaction, record]);
+
+  const handleProviderSave = useCallback(
+    (config: AIProviderConfig | null) => {
+      if (config) setProviderConfig(config);
+      else clearProviderConfig();
+    },
+    [setProviderConfig, clearProviderConfig]
+  );
+
+  const clearAllLocal = useCallback(() => {
+    if (!window.confirm("Apagar TODOS os dados locais (perfil, carteira, transações, chat)?")) return;
+    resetProfile();
+    clearTransactions();
+    localStorage.removeItem("stocks-ai-portfolio");
+    localStorage.removeItem("praxia-pra-chat");
+    window.location.reload();
+  }, [resetProfile, clearTransactions]);
+
+  // ── Boot flow ───────────────────────────────────────────────────────────
+  if (bootScreen === "onboarding") {
+    return (
+      <AppShell>
+        <ScreenOnboarding accent={accent} onStart={() => setBootScreen("quiz")} />
+      </AppShell>
+    );
+  }
+
+  if (bootScreen === "quiz") {
+    return (
+      <AppShell>
+        <ScreenQuiz
+          accent={accent}
+          onComplete={(p) => {
+            saveProfile(p);
+            setBootScreen("app");
+          }}
+        />
+      </AppShell>
+    );
+  }
+
+  // ── Main app ────────────────────────────────────────────────────────────
+  const showNav = ["home", "market", "activity", "profile"].includes(screen);
+  const showFab = showNav;
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
-      {/* Blue gradient glow effect */}
-      <div className="pointer-events-none fixed left-0 top-0 -z-10 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
-      <div className="pointer-events-none fixed right-0 bottom-0 -z-10 h-[400px] w-[400px] rounded-full bg-blue-600/5 blur-[100px]" />
-
-      <div className="mx-auto max-w-6xl px-4 py-8 md:py-12 space-y-12">
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-8">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary border border-primary/20">
-              <TrendingUp className="h-4 w-4" />
-              <span>Plataforma de Elite</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-white">
-              STOCKS<span className="text-primary italic">AI</span>
-            </h1>
-            <p className="max-w-md text-muted-foreground leading-relaxed">
-              Analise sua carteira com a inteligência do Value Investing.
-              Cotações automáticas e gratuitas via Yahoo Finance.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Connection status - Agora fixo como Conectado via Yahoo */}
-            <div className="flex items-center gap-2 bg-card/50 backdrop-blur-sm border border-border px-3 py-2 rounded-lg text-xs">
-              <Wifi className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-muted-foreground font-medium">
-                Cotações Ativas
-              </span>
-            </div>
-
-            {/* Refresh button */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 border-border"
-              onClick={refreshAll}
-              disabled={isRefreshing || stocks.length === 0}
-              title="Atualizar todas as cotações"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            </Button>
-
-            {/* Settings button */}
-            <Button
-              variant="outline"
-              size="icon"
-              className={`h-9 w-9 border-border ${showSettings ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
-              onClick={() => setShowSettings(!showSettings)}
-              title="Configurações"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-
-            {/* Stock count */}
-            <div className="flex items-center gap-4 bg-card/50 backdrop-blur-sm border border-border p-4 rounded-xl">
-              <div className="rounded-full bg-primary/20 p-2">
-                <LayoutDashboard className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-semibold uppercase">Total Analisado</p>
-                <p className="text-2xl font-bold">{stocks.length} Ativos</p>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Settings Panel */}
-        {showSettings && (
-          <section className="animate-in fade-in slide-in-from-top-4 duration-500">
-            <AIProviderSettings />
-          </section>
-        )}
-
-        {/* API Error banner */}
-        {error && (
-          <div className="flex items-center justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400 animate-in fade-in duration-300">
-            <span>{error}</span>
-            <button onClick={clearError} className="ml-4 hover:text-rose-300">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 p-1 bg-card/50 border border-border/50 rounded-2xl w-fit">
-          <Button
-            variant={activeTab === 'individual' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('individual')}
-            className={`rounded-xl font-bold transition-all ${activeTab === 'individual' ? 'shadow-lg shadow-primary/20' : ''}`}
-          >
-            Carteira Individual
-          </Button>
-          <Button
-            variant={activeTab === 'batch' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('batch')}
-            className={`rounded-xl font-bold transition-all ${activeTab === 'batch' ? 'shadow-lg shadow-primary/20' : ''}`}
-          >
-            Analise em Lote (CSV)
-          </Button>
+    <AppShell>
+      {error && (
+        <div
+          onClick={clearError}
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            right: 12,
+            zIndex: 60,
+            padding: "10px 14px",
+            background: "rgba(255,107,129,0.16)",
+            border: "0.5px solid rgba(255,107,129,0.4)",
+            borderRadius: 12,
+            color: "#ff6b81",
+            fontSize: 12.5,
+            fontFamily: '"Manrope", sans-serif',
+            cursor: "pointer",
+          }}
+        >
+          {error} (toque para fechar)
         </div>
+      )}
 
-        {activeTab === 'individual' ? (
-          <div className="space-y-12 animate-in fade-in duration-500">
-            <section className="animate-in fade-in slide-in-from-bottom-2 duration-400">
-              <MarketTicker />
-            </section>
+      {screen === "home" && (
+        <ScreenHome
+          accent={accent}
+          stocks={stocks}
+          profile={profile}
+          onOpenStock={(s) => setQuickWatch(s)}
+          onSeeAllHoldings={() => setScreen("market")}
+          onAddStock={() => setScreen("market")}
+          onOpenInsights={() => setInsightsOpen(true)}
+        />
+      )}
 
-            <section className="animate-in fade-in slide-in-from-bottom-3 duration-450">
-              <CotacaoStatus
-                stocks={stocks}
-                lastRefreshed={lastRefreshed}
-                isRefreshing={isRefreshing}
-                onRefresh={manualRefresh}
-              />
-            </section>
+      {screen === "market" && (
+        <ScreenMarket
+          accent={accent}
+          stocks={stocks}
+          profile={profile}
+          onOpenStock={(s) => setQuickWatch(s)}
+          onAddTicker={async (ticker) => {
+            const added = await addStock(ticker, 0, 0);
+            return added !== null;
+          }}
+        />
+      )}
 
-            <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <StockForm onAddStock={handleAddStock} lastAdded={lastAdded} />
-            </section>
+      {screen === "activity" && (
+        <ScreenActivity accent={accent} transactions={transactions} />
+      )}
 
-            {/* AI Insights */}
-            {stocks.length > 0 && (
-              <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <Suspense fallback={<div className="h-24 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
-                  <AIInsights stocks={stocks} />
-                </Suspense>
-              </section>
-            )}
+      {screen === "profile" && (
+        <ScreenProfile
+          accent={accent}
+          onAccentChange={setAccent}
+          tone={tone}
+          onToneChange={setTone}
+          profile={profile}
+          username={username}
+          providerConfig={providerConfig}
+          onProviderSave={handleProviderSave}
+          onRetakeQuiz={() => {
+            resetProfile();
+            setBootScreen("quiz");
+          }}
+          onLogout={onLogout}
+          onClearLocalData={clearAllLocal}
+        />
+      )}
 
-            {/* Risk Metrics & DCF Valuation - side by side on large screens */}
-            {stocks.length > 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-5 duration-600">
-                <section>
-                  <RiskMetrics stocks={stocks} />
-                </section>
-                <section>
-                  <DCFValuation stocks={stocks} />
-                </section>
-              </div>
-            )}
+      {screen === "stock" && activeStock && (
+        <ScreenStockDetail
+          accent={accent}
+          stock={activeStock}
+          profile={profile}
+          isFavorite={activeStock.isFavorite}
+          isOwned={(activeStock.quantity || 0) > 0}
+          onBack={() => setScreen("home")}
+          onBuy={(s) => startOrder(s, "buy")}
+          onSell={(s) => startOrder(s, "sell")}
+          onToggleFavorite={() => toggleFavorite(activeStock.ticker)}
+        />
+      )}
 
-            {stocks.length > 0 && (
-              <DashboardIntegrado stocks={stocks} relatorios={relatorios} />
-            )}
+      {screen === "order" && activeStock && (
+        <ScreenOrder
+          accent={accent}
+          stock={activeStock}
+          type={pendingType}
+          maxShares={pendingType === "sell" ? activeStock.quantity : undefined}
+          onBack={() => setScreen(activeStock ? "stock" : "home")}
+          onConfirm={(draft) => {
+            setOrderDraft(draft);
+            setScreen("review");
+          }}
+        />
+      )}
 
-            {stocks.length > 0 && (
-              <RelatoriosPanel
-                stocks={stocks}
-                relatorios={relatorios}
-                loading={relatoriosLoading}
-                error={relatoriosError}
-                onRefresh={refetchRelatorios}
-              />
-            )}
+      {screen === "review" && activeStock && orderDraft && (
+        <ScreenOrderReview
+          accent={accent}
+          stock={activeStock}
+          draft={orderDraft}
+          totalPortfolio={totalValue}
+          onClose={() => setScreen("order")}
+          onConfirm={confirmOrder}
+        />
+      )}
 
-            <main className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-              <div className="rounded-2xl border border-border/50 bg-card shadow-2xl overflow-hidden">
-                <div className="border-b border-border/50 bg-muted/30 px-6 py-4 flex items-center justify-between">
-                  <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
-                    Visualização de Mercado
-                  </h2>
-                  {isRefreshing && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                      Atualizando...
-                    </div>
-                  )}
-                </div>
-                <div className="p-0">
-                  <StocksTable
-                    stocks={stocks}
-                    onRefreshStock={refreshStock}
-                    onRemoveStock={removeStock}
-                    onShowChart={(ticker) => setChartTicker(ticker === chartTicker ? null : ticker)}
-                  />
-                </div>
-              </div>
-            </main>
-          </div>
-        ) : (
-          <div className="animate-in fade-in duration-500">
-            <BatchValuation />
-          </div>
-        )}
+      {showNav && (
+        <BottomNav
+          tab={screen as NavTab}
+          onChange={(t) => setScreen(t)}
+          accent={accent}
+        />
+      )}
 
-        {/* Stock Chart */}
-        {chartTicker && (
-          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <Suspense fallback={<div className="h-80 rounded-xl border border-border/50 bg-card/60 animate-pulse" />}>
-              <StockChart
-                ticker={chartTicker}
-                onClose={() => setChartTicker(null)}
-              />
-            </Suspense>
-          </section>
-        )}
-        <footer className="text-center text-sm text-muted-foreground pt-12 border-t border-border/30">
-          <div className="flex justify-center gap-6 mb-4">
-            <span className="hover:text-primary transition-colors cursor-pointer">Documentação</span>
-            <span className="hover:text-primary transition-colors cursor-pointer">Termos</span>
-            <span className="hover:text-primary transition-colors cursor-pointer">Privacidade</span>
-          </div>
-          <p>© {new Date().getFullYear()} STOCKS AI ENGINE. Todos os direitos reservados.</p>
-        </footer>
-      </div>
-    </div>
+      {showFab && (
+        <FloatingPraButton accent={accent} onClick={() => setChatOpen(true)} />
+      )}
+
+      <QuickWatch
+        accent={accent}
+        stock={quickWatch ?? stocks[0] ?? activeStock!}
+        open={quickWatch !== null}
+        onClose={() => setQuickWatch(null)}
+        onBuy={() => quickWatch && startOrder(quickWatch, "buy")}
+        onSell={() => quickWatch && startOrder(quickWatch, "sell")}
+        onSeeDetail={() => quickWatch && openStock(quickWatch)}
+      />
+
+      <ChatSheet
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        accent={accent}
+        tone={tone}
+        profile={profile}
+        stocks={stocks}
+        totalValue={totalValue}
+        onProfileDetected={(draft) => {
+          saveProfile(draft);
+        }}
+      />
+
+      <PortfolioInsightsModal
+        open={insightsOpen}
+        onClose={() => setInsightsOpen(false)}
+        stocks={stocks}
+        profile={profile}
+        accent={accent}
+      />
+    </AppShell>
   );
 }
 
@@ -279,7 +317,9 @@ function App() {
     return <LoginScreen onLogin={() => setAuthenticated(true)} />;
   }
 
-  return <AppContent />;
+  return (
+    <PraxiaApp username="admin" onLogout={() => setAuthenticated(false)} />
+  );
 }
 
 export default App;

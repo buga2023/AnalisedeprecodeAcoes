@@ -1,8 +1,5 @@
 import { useState } from "react";
 import { TrendingUp, Lock } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -41,27 +38,31 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="username" className="text-gray-300">Usuário</Label>
-              <Input
+              <label htmlFor="username" className="text-sm font-medium text-gray-300">
+                Usuário
+              </label>
+              <input
                 id="username"
                 type="text"
                 placeholder="Digite o usuário"
                 value={username}
                 onChange={(e) => { setUsername(e.target.value); setError(""); }}
-                className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
                 autoFocus
+                className="h-9 rounded-md border border-gray-700 bg-gray-800 px-3 py-1 text-sm text-white placeholder:text-gray-500 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password" className="text-gray-300">Senha</Label>
-              <Input
+              <label htmlFor="password" className="text-sm font-medium text-gray-300">
+                Senha
+              </label>
+              <input
                 id="password"
                 type="password"
                 placeholder="Digite a senha"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
+                className="h-9 rounded-md border border-gray-700 bg-gray-800 px-3 py-1 text-sm text-white placeholder:text-gray-500 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               />
             </div>
 
@@ -69,9 +70,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <p className="text-red-400 text-sm text-center">{error}</p>
             )}
 
-            <Button type="submit" className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white">
+            <button
+              type="submit"
+              className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
               Entrar
-            </Button>
+            </button>
           </form>
         </div>
       </div>

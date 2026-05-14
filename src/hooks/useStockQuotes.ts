@@ -3,6 +3,7 @@ import type { Stock } from "@/types/stock";
 import { fetchStockQuote, fetchMultipleQuotes } from "@/lib/api";
 import type { BrapiQuoteResult } from "@/lib/api";
 import { calculateGrahamValue, calculateStockScore } from "@/lib/calculators";
+import { detectMarket, detectSector, brandColor } from "@/lib/stockMeta";
 
 const STORAGE_KEY = "stocks-ai-portfolio";
 const TOKEN_KEY = "stocks-ai-brapi-token";
@@ -72,6 +73,10 @@ function mapQuoteToStock(
     evEbitda,
     netMargin,
     ebitdaMargin,
+    name: quote.shortName ?? quote.longName ?? quote.symbol,
+    market: detectMarket(quote.symbol),
+    sector: detectSector(quote.symbol),
+    brandColor: brandColor(quote.symbol),
   };
 }
 
@@ -204,6 +209,70 @@ export function useStockQuotes() {
     );
   }, []);
 
+  /**
+   * Apply a paper-trade execution against the local portfolio.
+   * - Buy: averages cost up and increments quantity (fetches the ticker if it isn't held yet).
+   * - Sell: decrements quantity; removes the position when it reaches zero.
+   * Returns `true` on success.
+   */
+  const applyTransaction = useCallback(
+    async (
+      ticker: string,
+      type: "buy" | "sell",
+      shares: number,
+      price: number
+    ): Promise<boolean> => {
+      if (shares <= 0) return false;
+      setError(null);
+
+      if (type === "buy") {
+        const existing = stocks.find((s) => s.ticker.toUpperCase() === ticker.toUpperCase());
+        if (existing) {
+          setStocks((prev) =>
+            prev.map((s) => {
+              if (s.ticker !== existing.ticker) return s;
+              const newQty = (s.quantity || 0) + shares;
+              const totalCost = (s.cost || 0) * (s.quantity || 0) + price * shares;
+              const newCost = totalCost / newQty;
+              return { ...s, quantity: newQty, cost: newCost };
+            })
+          );
+          return true;
+        }
+        // First-time purchase: fetch fresh quote then write position
+        try {
+          const quote = await fetchStockQuote(ticker);
+          const fresh = mapQuoteToStock(quote, price, shares);
+          setStocks((prev) => {
+            if (prev.some((p) => p.ticker === fresh.ticker)) return prev;
+            return [fresh, ...prev];
+          });
+          return true;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Falha ao registrar compra.");
+          return false;
+        }
+      }
+
+      // sell
+      let ok = false;
+      setStocks((prev) =>
+        prev
+          .map((s) => {
+            if (s.ticker.toUpperCase() !== ticker.toUpperCase()) return s;
+            const remaining = (s.quantity || 0) - shares;
+            if (remaining < 0) return s;
+            ok = true;
+            return { ...s, quantity: remaining };
+          })
+          .filter((s) => s.quantity > 0 || s.isFavorite)
+      );
+      if (!ok) setError("Quantidade insuficiente para venda.");
+      return ok;
+    },
+    [stocks]
+  );
+
   useEffect(() => {
     if (stocks.length === 0) return;
 
@@ -218,6 +287,8 @@ export function useStockQuotes() {
     };
   }, [refreshAll, stocks.length]);
 
+  const replaceAll = useCallback((next: Stock[]) => setStocks(next), []);
+
   return {
     stocks,
     isRefreshing,
@@ -227,6 +298,8 @@ export function useStockQuotes() {
     addStock,
     removeStock,
     toggleFavorite,
+    applyTransaction,
+    replaceAll,
     refreshAll,
     refreshStock,
     manualRefresh: refreshAll,

@@ -17,10 +17,26 @@ export default async function handler(
     return response.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { provider, apiKey, messages, temperature = 0.7, max_tokens = 2048, response_format } = request.body;
+  const { provider: bodyProvider, messages, temperature = 0.7, max_tokens = 2048, response_format } = request.body;
 
-  if (!provider || !apiKey) {
-    return response.status(400).json({ error: 'Provider e API Key sao obrigatorios.' });
+  const provider = (bodyProvider || process.env.AI_PROVIDER || 'groq') as string;
+
+  const envKeyMap: Record<string, string | undefined> = {
+    openai: process.env.OPENAI_API_KEY,
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+  };
+  const apiKey = envKeyMap[provider];
+
+  if (!apiKey) {
+    return response.status(503).json({
+      error: `IA nao configurada no servidor: defina ${provider.toUpperCase()}_API_KEY no ambiente.`,
+    });
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return response.status(400).json({ error: 'messages e obrigatorio.' });
   }
 
   try {
