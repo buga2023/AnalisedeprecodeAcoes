@@ -1,38 +1,86 @@
+/**
+ * Praxia design tokens — v0 "Engraved" direction.
+ *
+ * Direção: private banking (BTG) + clareza fintech (XP). Paleta onyx + vellum
+ * com dourado discreto como único acento. Tipografia serif (Cormorant/Playfair)
+ * como protagonista — tech genérico está fora.
+ *
+ * Os nomes de tokens (bg, surface, ink, accent, etc.) são mantidos para que
+ * todo o código já existente continue funcionando sem refactor — apenas os
+ * VALORES mudaram. Tokens novos (gold, vellum, onyx, etc.) ficam disponíveis
+ * para usos específicos.
+ */
 export const PraxiaTokens = {
-  bg: "#05071a",
-  bgDeep: "#020314",
-  surface: "#0d1330",
-  surface2: "#161e44",
-  surfaceInk: "rgba(255,255,255,0.04)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineStrong: "rgba(255,255,255,0.14)",
+  // === Surfaces (onyx warm) ==============================================
+  /** Fundo principal: near-black com leve calor. */
+  bg: "#0a0a10",
+  /** Variação levemente mais quente para gradientes radiais. */
+  bgDeep: "#06060a",
+  /** Sub-superfície com tom marrom escuro (para depth atrás de cards). */
+  surface: "#13110d",
+  surface2: "#1a1610",
+  surfaceInk: "rgba(244,236,223,0.04)",
 
-  ink: "#ffffff",
-  ink70: "rgba(255,255,255,0.72)",
-  ink50: "rgba(255,255,255,0.52)",
-  ink30: "rgba(255,255,255,0.32)",
+  // Linhas finas — usadas como divisores e bordas de cards
+  hairline: "rgba(244,236,223,0.10)",
+  hairlineStrong: "rgba(244,236,223,0.18)",
+  /** Régua dourada — companion line abaixo do wordmark */
+  rule: "rgba(200,162,92,0.55)",
 
-  up: "#42e8a3",
-  down: "#ff6b81",
-  warn: "#ffc857",
+  // === Ink (texto sobre fundo escuro) — parchment warm white ===============
+  ink: "#f4ecdf",
+  ink70: "rgba(244,236,223,0.72)",
+  ink50: "rgba(244,236,223,0.52)",
+  ink30: "rgba(244,236,223,0.30)",
 
-  accent: "#5b7cff",
-  accentSoft: "rgba(91,124,255,0.18)",
-  accentGlow: "rgba(91,124,255,0.45)",
+  // === Paper (modo claro / inversão) ======================================
+  /** Cream / vellum — usado para backgrounds invertidos */
+  paper: "#f1eadb",
+  /** Espresso brown-black — texto sobre paper */
+  paperInk: "#1a1610",
 
-  display: '"Sora", system-ui, sans-serif',
+  // === Semantic (compras/vendas/avisos) ===================================
+  // Verde mais maduro (menos neon), vermelho mais terroso, âmbar dourado
+  up: "#7fb796",
+  down: "#c87371",
+  warn: "#c8a25c",
+
+  // === Accent (dourado discreto, alias para os tokens existentes) =========
+  /** Champagne gold — único acento do sistema */
+  accent: "#c8a25c",
+  accentSoft: "rgba(200,162,92,0.18)",
+  accentGlow: "rgba(200,162,92,0.40)",
+  /** Aliases semânticos para uso explícito */
+  gold: "#c8a25c",
+  goldDim: "rgba(200,162,92,0.55)",
+  goldFaint: "rgba(200,162,92,0.20)",
+
+  // === Tipografia ========================================================
+  /** Display: serif premium — Cormorant Garamond. Para títulos e wordmark. */
+  display: '"Cormorant Garamond", "EB Garamond", Georgia, serif',
+  /** Small-caps serif — Cormorant SC. Para PRAXIA/MENU/seções */
+  displaySC: '"Cormorant SC", "Cormorant Garamond", Georgia, serif',
+  /** Variação estabelecida — Playfair Display para detalhes. */
+  displayAlt: '"Playfair Display", "Cormorant Garamond", Georgia, serif',
+  /** Body: Manrope (mantido — funciona bem ao lado de serif) */
   body: '"Manrope", system-ui, sans-serif',
+  /** Numérico/metadados: JetBrains Mono (mantido) */
   mono: '"JetBrains Mono", ui-monospace, monospace',
 } as const;
 
 export type PraxiaTokensType = typeof PraxiaTokens;
 
+/**
+ * Variações de "accent" disponíveis ao usuário. Mantemos a API com 5 opções,
+ * mas a paleta agora é toda em tons sóbrios (champagne / brass / brushed)
+ * pra não fugir da direção Engraved.
+ */
 export const ACCENT_OPTIONS = [
-  { value: "#5b7cff", label: "Elétrico" },
-  { value: "#42e8a3", label: "Verde" },
-  { value: "#a78bfa", label: "Roxo" },
-  { value: "#ff8a4d", label: "Laranja" },
-  { value: "#f3b94d", label: "Âmbar" },
+  { value: "#c8a25c", label: "Champagne" },
+  { value: "#b08846", label: "Brass" },
+  { value: "#d4b97e", label: "Vellum" },
+  { value: "#a89070", label: "Brushed" },
+  { value: "#cf9858", label: "Amber" },
 ] as const;
 
 export const fmt = {

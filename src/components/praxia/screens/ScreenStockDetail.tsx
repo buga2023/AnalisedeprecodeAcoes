@@ -27,6 +27,9 @@ interface ScreenStockDetailProps {
   onBuy: (s: Stock) => void;
   onSell: (s: Stock) => void;
   onToggleFavorite: () => void;
+  onCreateAlert?: (stock: Stock) => void;
+  onCompare?: (ticker: string) => void;
+  isInCompareList?: boolean;
 }
 
 type RangeUI = "1D" | "5D" | "6M";
@@ -47,36 +50,61 @@ export function ScreenStockDetail({
   onBuy,
   onSell,
   onToggleFavorite,
+  onCreateAlert,
+  onCompare,
+  isInCompareList = false,
 }: ScreenStockDetailProps) {
   const T = PraxiaTokens;
   const [range, setRange] = useState<RangeUI>("6M");
-  const [history, setHistory] = useState<HistoricalDataPoint[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Single state object — let us flip loading + reset history atomically when
+  // the request key (ticker + range) changes, without setState-in-effect.
+  type HistState = {
+    key: string;
+    loading: boolean;
+    history: HistoricalDataPoint[] | null;
+    error: string | null;
+  };
+  const initialKey = `${stock.ticker}::6M`;
+  const [hist, setHist] = useState<HistState>({
+    key: initialKey,
+    loading: true,
+    history: null,
+    error: null,
+  });
+  const requestKey = `${stock.ticker}::${range}`;
+  if (hist.key !== requestKey) {
+    setHist({ key: requestKey, loading: true, history: null, error: null });
+  }
+  const { history, loading, error } = hist;
 
   useEffect(() => {
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setError(null);
     fetchStockHistory(stock.ticker, RANGE_API[range])
       .then((points) => {
         if (cancelled) return;
-        setHistory(points);
+        setHist((prev) =>
+          prev.key === requestKey
+            ? { ...prev, history: points, loading: false }
+            : prev
+        );
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Falha ao buscar histórico");
-        setHistory(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        setHist((prev) =>
+          prev.key === requestKey
+            ? {
+                ...prev,
+                history: null,
+                error: err instanceof Error ? err.message : "Falha ao buscar histórico",
+                loading: false,
+              }
+            : prev
+        );
       });
     return () => {
       cancelled = true;
     };
-  }, [stock.ticker, range]);
+  }, [stock.ticker, range, requestKey]);
 
   const series = useMemo(() => {
     if (history && history.length >= 2) return history.map((h) => h.close);
@@ -92,8 +120,8 @@ export function ScreenStockDetail({
   }, [history, range, stock.ticker, stock.price, stock.changePercent]);
 
   const positive = stock.changePercent >= 0;
-  const grahamValue = calculateGrahamValue(stock.lpa, stock.vpa);
-  const margin = calculateMarginOfSafety(stock.price, grahamValue);
+  const grahamValue = stock.grahamValue ?? calculateGrahamValue(stock.lpa, stock.vpa);
+  const margin = stock.marginOfSafety ?? calculateMarginOfSafety(stock.price, grahamValue);
   const risk = profile?.risk ?? "mid";
 
   const praMessage = (() => {
@@ -108,7 +136,8 @@ export function ScreenStockDetail({
 
   return (
     <div
-      className="praxia-scroll"
+      className="praxia-scroll pra-screen"
+      key={`stock-${stock.ticker}`}
       style={{
         position: "relative",
         height: "100dvh",
@@ -136,6 +165,19 @@ export function ScreenStockDetail({
             <Icon.arrowLeft size={16} color={T.ink70} />
           </GlassButton>
           <div style={{ display: "flex", gap: 8 }}>
+            {onCompare && (
+              <GlassButton
+                onClick={() => onCompare(stock.ticker)}
+                ariaLabel={isInCompareList ? "Remover da comparação" : "Adicionar à comparação"}
+              >
+                <Icon.share size={16} color={isInCompareList ? accent : T.ink70} />
+              </GlassButton>
+            )}
+            {onCreateAlert && (
+              <GlassButton onClick={() => onCreateAlert(stock)} ariaLabel="Criar alerta">
+                <Icon.bell size={16} color={T.ink70} />
+              </GlassButton>
+            )}
             <GlassButton onClick={onToggleFavorite} ariaLabel="Favoritar">
               <Icon.star size={16} color={isFavorite ? PraxiaTokens.warn : T.ink70} fill={isFavorite ? PraxiaTokens.warn : "none"} />
             </GlassButton>
@@ -225,19 +267,14 @@ export function ScreenStockDetail({
         >
           {loading ? (
             <div
+              className="pra-skeleton"
               style={{
                 position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: T.body,
-                fontSize: 12,
-                color: T.ink50,
+                inset: 8,
+                borderRadius: 12,
               }}
-            >
-              Carregando histórico…
-            </div>
+              aria-label="Carregando histórico"
+            />
           ) : (
             <AreaChart
               values={series}
@@ -405,6 +442,22 @@ export function ScreenStockDetail({
             value={stock.dividendYield > 0 ? `${(stock.dividendYield * 100).toFixed(2)}%` : "—"}
           />
           <Stat label="ROE" value={`${(stock.roe * 100).toFixed(1)}%`} />
+          <Stat
+            label="ROIC"
+            value={
+              stock.roic && stock.roic !== 0
+                ? `${(stock.roic * 100).toFixed(1)}%`
+                : "—"
+            }
+          />
+          <Stat
+            label="ROI (posição)"
+            value={
+              stock.cost > 0
+                ? `${((stock.price / stock.cost - 1) * 100).toFixed(1)}%`
+                : "—"
+            }
+          />
           <Stat
             label="Preço-teto (Graham)"
             value={grahamValue > 0 ? fmt.brl(grahamValue) : "—"}

@@ -20,6 +20,7 @@ export function HoldingRow({ stock, onClick, isLast = false, showValue = true }:
   return (
     <button
       onClick={onClick}
+      className={onClick ? "pra-row" : undefined}
       style={{
         display: "flex",
         alignItems: "center",
@@ -32,6 +33,7 @@ export function HoldingRow({ stock, onClick, isLast = false, showValue = true }:
         borderBottom: isLast ? "none" : `0.5px solid ${T.hairline}`,
         color: T.ink,
         textAlign: "left",
+        borderRadius: 12,
       }}
     >
       <StockAvatar ticker={stock.ticker} color={stock.brandColor} />

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PraxiaTokens } from "./tokens";
 
 interface AppShellProps {
   children: ReactNode;
@@ -7,6 +8,9 @@ interface AppShellProps {
 /**
  * Mobile-first shell. On desktop we constrain the app to a ~430px column
  * so the iOS-style screens stay readable; on phones it fills the viewport.
+ *
+ * v0 Engraved: shell vira onyx warm com leve filete dourado entre a coluna
+ * e o canvas externo (visible no desktop como uma "moldura editorial").
  */
 export function AppShell({ children }: AppShellProps) {
   return (
@@ -15,8 +19,8 @@ export function AppShell({ children }: AppShellProps) {
         minHeight: "100dvh",
         display: "flex",
         justifyContent: "center",
-        background: "#020314",
-        color: "white",
+        background: PraxiaTokens.bgDeep,
+        color: PraxiaTokens.ink,
       }}
     >
       <div
@@ -26,8 +30,10 @@ export function AppShell({ children }: AppShellProps) {
           maxWidth: 440,
           minHeight: "100dvh",
           overflow: "hidden",
-          background: "#02030f",
-          boxShadow: "0 0 60px rgba(0,0,0,0.7)",
+          background: PraxiaTokens.bg,
+          // Sombra mais profunda + filete dourado externo discreto
+          boxShadow:
+            "0 0 0 0.5px rgba(200,162,92,0.18), 0 0 80px rgba(0,0,0,0.75)",
         }}
       >
         {children}

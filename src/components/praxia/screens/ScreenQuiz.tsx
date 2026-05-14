@@ -261,7 +261,7 @@ export function ScreenQuiz({ onComplete, accent = PraxiaTokens.accent }: ScreenQ
               height: 52,
               borderRadius: 999,
               background: canNext ? T.ink : "rgba(255,255,255,0.1)",
-              color: canNext ? "#05071a" : "rgba(255,255,255,0.4)",
+              color: canNext ? T.bg : "rgba(244,236,223,0.4)",
               border: "none",
               fontFamily: T.display,
               fontWeight: 600,

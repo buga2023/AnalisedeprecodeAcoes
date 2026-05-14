@@ -22,6 +22,7 @@ export function PraxiaCard({
   return (
     <Tag
       onClick={onClick}
+      className={onClick ? "pra-row" : undefined}
       style={{
         position: "relative",
         borderRadius: 22,

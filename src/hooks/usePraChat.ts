@@ -46,7 +46,10 @@ function buildSystemPrompt(args: Omit<UsePraChatArgs, "onProfileDetected">): str
         stocks
           .map(
             (s) =>
-              `${s.ticker} (${(s.quantity * s.price).toFixed(0)} BRL, ${s.changePercent >= 0 ? "+" : ""}${s.changePercent.toFixed(2)}%${s.sector ? `, ${s.sector}` : ""})`
+              `${s.ticker} (R$ ${s.price.toFixed(2)}, ${s.changePercent >= 0 ? "+" : ""}${s.changePercent.toFixed(2)}%, ` +
+              `P/L ${s.pl.toFixed(1)}, P/VP ${s.pvp.toFixed(2)}, DY ${(s.dividendYield * 100).toFixed(1)}%, ` +
+              `ROE ${(s.roe * 100).toFixed(1)}%, Score ${s.score}/100, ` +
+              `Graham R$ ${(s.grahamValue ?? 0).toFixed(2)}, Margem Seg. ${(s.marginOfSafety ?? 0).toFixed(1)}%)`
           )
           .join("; ") +
         ".";

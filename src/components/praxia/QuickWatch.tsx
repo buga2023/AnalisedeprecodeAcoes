@@ -62,7 +62,7 @@ export function QuickWatch({
           padding: "16px 16px 24px",
           background: `
             radial-gradient(120% 80% at 80% 0%, ${accent}22 0%, transparent 60%),
-            linear-gradient(180deg, #0a1030 0%, #050818 80%)
+            linear-gradient(180deg, ${T.surface} 0%, ${T.bg} 80%)
           `,
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,

@@ -39,10 +39,22 @@ export interface BrapiError {
   code?: string;
 }
 
+/** Erro estruturado de busca de ticker — pode trazer sugestões do upstream. */
+export class TickerLookupError extends Error {
+  status: number;
+  suggestions: { stock: string; name?: string }[];
+  constructor(message: string, status: number, suggestions: { stock: string; name?: string }[] = []) {
+    super(message);
+    this.name = "TickerLookupError";
+    this.status = status;
+    this.suggestions = suggestions;
+  }
+}
+
 export async function fetchStockQuote(
   ticker: string
 ): Promise<BrapiQuoteResult> {
-  const url = new URL(BRAPI_PROXY_URL, window.location.origin); 
+  const url = new URL(BRAPI_PROXY_URL, window.location.origin);
   url.searchParams.set("endpoint", `/quote/${encodeURIComponent(ticker.toUpperCase())}`);
   url.searchParams.set("modules", "summaryProfile,financialData,defaultKeyStatistics");
 
@@ -50,7 +62,14 @@ export async function fetchStockQuote(
 
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error(`Ticker "${ticker}" não encontrado.`);
+      // O backend pode anexar sugestões da Yahoo Search.
+      const body = await response.json().catch(() => ({} as { error?: string; suggestions?: unknown }));
+      const suggestions = Array.isArray(body?.suggestions) ? (body.suggestions as { stock: string; name?: string }[]) : [];
+      throw new TickerLookupError(
+        body?.error || `Ticker "${ticker}" não encontrado no Yahoo Finance.`,
+        404,
+        suggestions
+      );
     }
     if (response.status === 429) {
       throw new Error("Limite de requisições atingido. Tente novamente em alguns minutos.");
@@ -61,7 +80,7 @@ export async function fetchStockQuote(
   const data: BrapiQuoteResponse = await response.json();
 
   if (!data.results || data.results.length === 0) {
-    throw new Error(`Nenhum resultado encontrado para "${ticker}".`);
+    throw new TickerLookupError(`Nenhum resultado encontrado para "${ticker}".`, 404);
   }
 
   return data.results[0];

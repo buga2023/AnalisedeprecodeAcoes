@@ -28,6 +28,7 @@ export function Sparkline({
         strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
+        style={{ transition: "stroke 0.2s ease" }}
       />
     </svg>
   );
@@ -73,6 +74,7 @@ export function AreaChart({
         strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
+        style={{ transition: "stroke 0.2s ease" }}
       />
     </svg>
   );

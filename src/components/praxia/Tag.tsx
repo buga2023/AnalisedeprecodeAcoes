@@ -37,6 +37,42 @@ export function Tag({
   );
 }
 
+interface StatusTagProps {
+  children: ReactNode;
+  /** Background color of the pill (solid fill, no border). */
+  color: string;
+  /** Text color. */
+  text: string;
+  size?: "sm" | "md";
+}
+
+/**
+ * Filled status pill — heavier visual weight than `Tag`. Used for transaction
+ * states (Executada / Pendente) and section badges on Home cards.
+ */
+export function StatusTag({ children, color, text, size = "sm" }: StatusTagProps) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        height: size === "sm" ? 22 : 26,
+        padding: size === "sm" ? "0 9px" : "0 12px",
+        borderRadius: 999,
+        background: color,
+        color: text,
+        fontFamily: PraxiaTokens.body,
+        fontSize: size === "sm" ? 11 : 12,
+        fontWeight: 700,
+        letterSpacing: 0.2,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 interface DeltaPillProps {
   value: number;
   size?: "sm" | "md";

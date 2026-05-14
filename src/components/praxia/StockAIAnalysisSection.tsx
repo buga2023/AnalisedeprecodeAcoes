@@ -7,6 +7,7 @@ import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators
 import type { InvestorProfile, Stock } from "@/types/stock";
 import { renderWithLinks, SourceChip } from "./Citations";
 import { riskLabel } from "@/hooks/useInvestorProfile";
+import { DisclaimerBar } from "./DisclaimerBar";
 
 interface StockAIAnalysisSectionProps {
   stock: Stock;
@@ -42,6 +43,9 @@ function writeCache(ticker: string, analise: AnaliseIA) {
 function buildDados(stock: Stock): DadosQuantitativos {
   const grahamValue = calculateGrahamValue(stock.lpa, stock.vpa);
   const margem = grahamValue > 0 ? calculateMarginOfSafety(stock.price, grahamValue) / 100 : 0;
+  // ROI da posição = preço atual / custo médio − 1. Só faz sentido se houver custo.
+  const roiPosicao =
+    stock.cost > 0 ? stock.price / stock.cost - 1 : undefined;
   return {
     cotacao: stock.price,
     precoTeto: grahamValue,
@@ -50,6 +54,8 @@ function buildDados(stock: Stock): DadosQuantitativos {
     pl: stock.pl,
     pvp: stock.pvp,
     roe: stock.roe,
+    roic: stock.roic,
+    roiPosicao,
     dividendYield: stock.dividendYield,
     debtToEbitda: stock.debtToEbitda,
     netMargin: stock.netMargin,
@@ -348,6 +354,8 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
           >
             Regerar análise
           </button>
+
+          <DisclaimerBar accent={accent} variant="inline" />
         </>
       )}
     </PraxiaCard>

@@ -120,6 +120,46 @@ export const calculateROI = (currentPrice: number, costPrice: number): number =>
 };
 
 /**
+ * ROIC — Return on Invested Capital. Mede o retorno sobre o capital total
+ * investido (próprio + terceiros), aproximado a partir dos campos do Yahoo
+ * Finance disponíveis no `/api/brapi` proxy.
+ *
+ * Fórmula pragmática (graceful degradation):
+ *   ROIC ≈ NOPAT / (Dívida total + Patrimônio Líquido)
+ *   NOPAT ≈ EBIT × (1 − 0,34)              (alíquota efetiva BR ≈ 34%)
+ *   EBIT  ≈ EBITDA × 0,75                  (assume D&A ≈ 25% do EBITDA)
+ *   PL    ≈ Dívida total / (Dívida/PL)     (deriva do múltiplo D/E)
+ *
+ * Retorna fração (0,12 = 12%) ou 0 quando faltam dados. Limita a [-1, 1]
+ * para evitar valores absurdos vindos de divisões por números pequenos.
+ */
+export const calculateROIC = (
+  ebitda: number,
+  totalDebt: number,
+  debtToEquity: number,
+  taxRate = 0.34,
+  daRatio = 0.25
+): number => {
+  if (ebitda <= 0) return 0;
+  if (totalDebt <= 0 && debtToEquity <= 0) return 0;
+
+  const ebit = ebitda * (1 - daRatio);
+  const nopat = ebit * (1 - taxRate);
+
+  // Yahoo's debtToEquity geralmente vem em percentual (75 = 75%); normalizamos.
+  const de = debtToEquity > 5 ? debtToEquity / 100 : debtToEquity;
+  let equity = 0;
+  if (de > 0 && totalDebt > 0) equity = totalDebt / de;
+
+  const investedCapital = totalDebt + equity;
+  if (investedCapital <= 0) return 0;
+
+  const roic = nopat / investedCapital;
+  if (!Number.isFinite(roic)) return 0;
+  return Math.max(-1, Math.min(1, roic));
+};
+
+/**
  * Cálculo da Margem de Segurança
  * Diferença percentual entre o preço atual e o valor intrínseco
  * @param currentPrice Preço atual do ativo
@@ -128,7 +168,7 @@ export const calculateROI = (currentPrice: number, costPrice: number): number =>
  */
 export const calculateMarginOfSafety = (currentPrice: number, intrinsicValue: number): number => {
   if (intrinsicValue <= 0) return 0;
-  return (intrinsicValue - currentPrice) / intrinsicValue;
+  return ((intrinsicValue - currentPrice) / intrinsicValue) * 100;
 };
 
 /**

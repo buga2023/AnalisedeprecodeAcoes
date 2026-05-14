@@ -121,6 +121,12 @@ export const Icon = {
       <path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3z" />
     </svg>
   ),
+  trend: (p: IconProps = {}) => (
+    <svg {...base(p)}>
+      <path d="M3 17 9 11l4 4 8-8" />
+      <path d="M14 7h7v7" />
+    </svg>
+  ),
   star: (p: IconProps = {}) => (
     <svg {...base({ ...p, size: p.size ?? 16 })}>
       <path d="M12 3 9 10l-7 1 5 5-1 7 6-3 6 3-1-7 5-5-7-1-3-7z" />

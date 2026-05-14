@@ -5,17 +5,34 @@ const FONTES = {
     `https://investidor10.com.br/acoes/${ticker.toLowerCase()}/`,
   statusinvest: (ticker: string) =>
     `https://statusinvest.com.br/acoes/${ticker.toLowerCase()}`,
+  fundamentus: (ticker: string) =>
+    `https://www.fundamentus.com.br/detalhes.php?papel=${ticker.toUpperCase()}`,
 };
 
-const BROWSER_HEADERS: Record<string, string> = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-  "Cache-Control": "no-cache",
-};
+function headersFor(target: string): Record<string, string> {
+  // Sites brasileiros frequentemente cancelam requisições sem Referer ou com
+  // UA bot-like. Esse perfil reduz drasticamente o número de 403/CF challenges.
+  return {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    "Cache-Control": "no-cache",
+    Referer: target.includes("investidor10")
+      ? "https://investidor10.com.br/"
+      : target.includes("statusinvest")
+      ? "https://statusinvest.com.br/"
+      : target.includes("fundamentus")
+      ? "https://www.fundamentus.com.br/"
+      : "https://www.google.com.br/",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Upgrade-Insecure-Requests": "1",
+  };
+}
 
 function extrairTextoHTML(html: string): string {
   return (
@@ -37,15 +54,15 @@ function extrairTextoHTML(html: string): string {
 
 async function scrapar(url: string): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
-  
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
   try {
-    const res = await fetch(url, { headers: BROWSER_HEADERS, signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (!res.ok) throw new Error(`HTTP ${res.status} em ${url}`);
+    const res = await fetch(url, { headers: headersFor(url), signal: controller.signal });
+    if (!res.ok) return "";
     const html = await res.text();
     return extrairTextoHTML(html);
+  } catch {
+    return "";
   } finally {
     clearTimeout(timeoutId);
   }
@@ -74,45 +91,20 @@ export default async function handler(
     let conteudo = "";
     let fonte = "";
 
-    try {
-      fonte = FONTES.investidor10(ticker);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      
-      try {
-        const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: controller.signal });
-        clearTimeout(timeoutId);
-        
-        if (res.ok) {
-          const html = await res.text();
-          conteudo = extrairTextoHTML(html);
-        }
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    } catch (err) {
-      console.warn(`[scrape] Investidor10 falhou para ${ticker}:`, err);
-    }
+    // Tenta três fontes em ordem de qualidade decrescente. Cada falha é
+    // silenciosa — a IA continua com os dados quantitativos do app.
+    const fontes: Array<{ url: string; nome: string }> = [
+      { url: FONTES.investidor10(ticker), nome: "Investidor10" },
+      { url: FONTES.statusinvest(ticker), nome: "StatusInvest" },
+      { url: FONTES.fundamentus(ticker), nome: "Fundamentus" },
+    ];
 
-    if (!conteudo || conteudo.length < 100) {
-      try {
-        fonte = FONTES.statusinvest(ticker);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-        
-        try {
-          const res = await fetch(fonte, { headers: BROWSER_HEADERS, signal: controller.signal });
-          clearTimeout(timeoutId);
-          
-          if (res.ok) {
-            const html = await res.text();
-            conteudo = extrairTextoHTML(html);
-          }
-        } finally {
-          clearTimeout(timeoutId);
-        }
-      } catch (err) {
-        console.warn(`[scrape] StatusInvest falhou para ${ticker}:`, err);
+    for (const f of fontes) {
+      const texto = await scrapar(f.url);
+      if (texto && texto.length >= 200) {
+        conteudo = texto;
+        fonte = f.url;
+        break;
       }
     }
 
@@ -121,7 +113,8 @@ export default async function handler(
         ticker,
         conteudo: "",
         fonte: "",
-        aviso: "Dados não disponíveis nos sites consultados",
+        aviso:
+          "Dados de RI não disponíveis (sites podem estar bloqueando o scraping). A análise seguirá apenas com fundamentos do Yahoo Finance.",
       });
     }
 

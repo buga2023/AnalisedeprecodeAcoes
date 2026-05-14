@@ -22,6 +22,7 @@ interface ScreenProfileProps {
   providerConfig: AIProviderConfig | null;
   onProviderSave: (config: AIProviderConfig | null) => void;
   onRetakeQuiz: () => void;
+  onOpenBatchValuation?: () => void;
   onLogout: () => void;
   onClearLocalData: () => void;
 }
@@ -36,6 +37,7 @@ export function ScreenProfile({
   providerConfig,
   onProviderSave,
   onRetakeQuiz,
+  onOpenBatchValuation,
   onLogout,
   onClearLocalData,
 }: ScreenProfileProps) {
@@ -44,7 +46,8 @@ export function ScreenProfile({
 
   return (
     <div
-      className="praxia-scroll"
+      className="praxia-scroll pra-screen"
+      key="profile"
       style={{
         position: "relative",
         height: "100dvh",
@@ -257,6 +260,36 @@ export function ScreenProfile({
           )}
         </PraxiaCard>
 
+        {/* Ferramentas */}
+        {onOpenBatchValuation && (
+          <PraxiaCard padding={16}>
+            <SettingLabel label="Ferramentas" sub="Análises avançadas e importação" />
+            <button
+              onClick={onOpenBatchValuation}
+              style={{
+                marginTop: 12,
+                width: "100%",
+                height: 44,
+                borderRadius: 10,
+                background: `${accent}1f`,
+                color: T.ink,
+                border: `0.5px solid ${accent}55`,
+                fontFamily: T.body,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <Icon.invest size={14} color={accent} />
+              Valuation em lote (CSV/XLSX)
+            </button>
+          </PraxiaCard>
+        )}
+
         {/* Danger */}
         <PraxiaCard padding={16}>
           <SettingLabel label="Dados locais" sub="Tudo é guardado no seu navegador" />
@@ -416,6 +449,8 @@ function AIProviderForm({
         ))}
       </div>
       <input
+        id="ai-api-key"
+        name="apiKey"
         type="password"
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}

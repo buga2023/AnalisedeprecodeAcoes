@@ -31,6 +31,11 @@ export interface Stock {
   evEbitda: number;
   netMargin: number;
   ebitdaMargin: number;
+  /** Return on Invested Capital — fração (0.12 = 12%) */
+  roic?: number;
+  /** Graham & Valuation metrics */
+  grahamValue?: number;
+  marginOfSafety?: number;
   /** Praxia UI metadata */
   name?: string;
   market?: MarketType;
@@ -112,6 +117,21 @@ export interface Transaction {
   total: number;
   fee: number;
   timestamp: string;
+}
+
+/* ─── Praxia: price alerts ──────────────────────────────────────────────── */
+export type AlertType = 'price-above' | 'price-below' | 'graham-margin' | 'change-drop';
+
+export interface PriceAlert {
+  id: string;
+  ticker: string;
+  type: AlertType;
+  /** value semantics depends on type: price (R$), margin (%), drop (%) */
+  value: number;
+  note?: string;
+  createdAt: string;
+  triggeredAt?: string;
+  triggerPrice?: number;
 }
 
 /* ─── Praxia: chat history with Pra ─────────────────────────────────────── */

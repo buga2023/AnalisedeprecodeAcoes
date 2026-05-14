@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoginScreen } from "@/components/LoginScreen";
 import { AppShell } from "@/components/praxia/AppShell";
 import { BottomNav, type NavTab } from "@/components/praxia/BottomNav";
 import { FloatingPraButton } from "@/components/praxia/FloatingPraButton";
 import { ScreenOnboarding } from "@/components/praxia/screens/ScreenOnboarding";
+import { ScreenOnboardingB } from "@/components/praxia/screens/ScreenOnboardingB";
 import { ScreenQuiz } from "@/components/praxia/screens/ScreenQuiz";
 import { ScreenHome } from "@/components/praxia/screens/ScreenHome";
 import { ScreenMarket } from "@/components/praxia/screens/ScreenMarket";
@@ -12,6 +13,10 @@ import { ScreenOrder } from "@/components/praxia/screens/ScreenOrder";
 import { ScreenOrderReview } from "@/components/praxia/screens/ScreenOrderReview";
 import { ScreenActivity } from "@/components/praxia/screens/ScreenActivity";
 import { ScreenProfile } from "@/components/praxia/screens/ScreenProfile";
+import { ScreenBatchValuation } from "@/components/praxia/screens/ScreenBatchValuation";
+import { ScreenAlerts } from "@/components/praxia/screens/ScreenAlerts";
+import { ScreenCompare } from "@/components/praxia/screens/ScreenCompare";
+import { AlertSheet } from "@/components/praxia/AlertSheet";
 import { ChatSheet } from "@/components/praxia/ChatSheet";
 import { QuickWatch } from "@/components/praxia/QuickWatch";
 import { PortfolioInsightsModal } from "@/components/praxia/PortfolioInsightsModal";
@@ -20,6 +25,7 @@ import { useInvestorProfile } from "@/hooks/useInvestorProfile";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useUIPreferences } from "@/hooks/useUIPreferences";
 import { useAIProvider } from "@/hooks/useAIProvider";
+import { useAlerts } from "@/hooks/useAlerts";
 import { totalPortfolioValue } from "@/lib/portfolio";
 import type {
   AIProviderConfig,
@@ -28,7 +34,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "stock" | "order" | "review" | "activity" | "profile";
+type Screen = "home" | "market" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare";
 
 interface OrderDraft {
   shares: number;
@@ -45,10 +51,20 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     useStockQuotes();
   const { transactions, record, clear: clearTransactions } = useTransactions();
   const { providerConfig, setProviderConfig, clearProviderConfig } = useAIProvider();
+  const {
+    alerts,
+    activeAlerts,
+    permission: notifPermission,
+    requestPermission: requestNotifPermission,
+    createAlert,
+    removeAlert,
+    resetAlert,
+    checkAlerts,
+  } = useAlerts();
 
-  const [bootScreen, setBootScreen] = useState<"onboarding" | "quiz" | "app">(() => {
+  const [bootScreen, setBootScreen] = useState<"quiz" | "app">(() => {
     if (profile) return "app";
-    return "onboarding";
+    return "quiz";
   });
 
   const [screen, setScreen] = useState<Screen>("home");
@@ -59,6 +75,34 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
   const [quickWatch, setQuickWatch] = useState<Stock | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [alertSheetStock, setAlertSheetStock] = useState<Stock | null>(null);
+  const [compareTickers, setCompareTickers] = useState<string[]>([]);
+
+  const toggleCompareTicker = useCallback((ticker: string) => {
+    setCompareTickers((prev) => {
+      if (prev.includes(ticker)) return prev.filter((t) => t !== ticker);
+      if (prev.length >= 4) return prev;
+      return [...prev, ticker];
+    });
+  }, []);
+
+  const addToCompareAndOpen = useCallback(
+    (ticker: string) => {
+      setCompareTickers((prev) => {
+        if (prev.includes(ticker)) return prev;
+        if (prev.length >= 4) return prev;
+        return [...prev, ticker];
+      });
+      setScreen("compare");
+    },
+    []
+  );
+
+  // Whenever stocks change (live polling updates them), re-run alert checks.
+  useEffect(() => {
+    if (stocks.length === 0) return;
+    checkAlerts(stocks);
+  }, [stocks, checkAlerts]);
 
   // Derive the currently-active stock straight from the portfolio so it
   // always reflects the latest quote without manual sync. Falls back to a
@@ -125,15 +169,6 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     window.location.reload();
   }, [resetProfile, clearTransactions]);
 
-  // ── Boot flow ───────────────────────────────────────────────────────────
-  if (bootScreen === "onboarding") {
-    return (
-      <AppShell>
-        <ScreenOnboarding accent={accent} onStart={() => setBootScreen("quiz")} />
-      </AppShell>
-    );
-  }
-
   if (bootScreen === "quiz") {
     return (
       <AppShell>
@@ -148,7 +183,6 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     );
   }
 
-  // ── Main app ────────────────────────────────────────────────────────────
   const showNav = ["home", "market", "activity", "profile"].includes(screen);
   const showFab = showNav;
 
@@ -186,6 +220,10 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onSeeAllHoldings={() => setScreen("market")}
           onAddStock={() => setScreen("market")}
           onOpenInsights={() => setInsightsOpen(true)}
+          onOpenProfile={() => setScreen("profile")}
+          onOpenChat={() => setChatOpen(true)}
+          onOpenAlerts={() => setScreen("alerts")}
+          activeAlertCount={activeAlerts.length}
         />
       )}
 
@@ -220,8 +258,39 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             resetProfile();
             setBootScreen("quiz");
           }}
+          onOpenBatchValuation={() => setScreen("batch")}
           onLogout={onLogout}
           onClearLocalData={clearAllLocal}
+        />
+      )}
+
+      {screen === "batch" && (
+        <ScreenBatchValuation accent={accent} onBack={() => setScreen("profile")} />
+      )}
+
+      {screen === "alerts" && (
+        <ScreenAlerts
+          accent={accent}
+          alerts={alerts}
+          permission={notifPermission}
+          onBack={() => setScreen("home")}
+          onRequestPermission={() => {
+            void requestNotifPermission();
+          }}
+          onRemove={removeAlert}
+          onReset={resetAlert}
+        />
+      )}
+
+      {screen === "compare" && (
+        <ScreenCompare
+          accent={accent}
+          stocks={stocks}
+          selectedTickers={compareTickers}
+          profile={profile}
+          onBack={() => setScreen("home")}
+          onRemoveTicker={(t) => toggleCompareTicker(t)}
+          onAddTicker={() => setScreen("market")}
         />
       )}
 
@@ -236,6 +305,9 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onBuy={(s) => startOrder(s, "buy")}
           onSell={(s) => startOrder(s, "sell")}
           onToggleFavorite={() => toggleFavorite(activeStock.ticker)}
+          onCreateAlert={(s) => setAlertSheetStock(s)}
+          onCompare={(ticker) => addToCompareAndOpen(ticker)}
+          isInCompareList={compareTickers.includes(activeStock.ticker)}
         />
       )}
 
@@ -299,6 +371,18 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
         }}
       />
 
+      <AlertSheet
+        open={alertSheetStock !== null}
+        accent={accent}
+        stock={alertSheetStock}
+        onClose={() => setAlertSheetStock(null)}
+        onCreate={async ({ type, value, note }) => {
+          if (!alertSheetStock) return;
+          if (notifPermission === "default") await requestNotifPermission();
+          createAlert({ ticker: alertSheetStock.ticker, type, value, note });
+        }}
+      />
+
       <PortfolioInsightsModal
         open={insightsOpen}
         onClose={() => setInsightsOpen(false)}
@@ -312,13 +396,49 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [bootStep, setBootStep] = useState<"onboardingA" | "onboardingB" | "login" | "app">(() => {
+    const hasProfile = !!localStorage.getItem("stocks-ai-investor-profile");
+    if (hasProfile) return "login";
+    return "onboardingA";
+  });
 
-  if (!authenticated) {
-    return <LoginScreen onLogin={() => setAuthenticated(true)} />;
+  if (authenticated || bootStep === "app") {
+    return (
+      <PraxiaApp
+        username="admin"
+        onLogout={() => {
+          setAuthenticated(false);
+          setBootStep("login");
+        }}
+      />
+    );
+  }
+
+  if (bootStep === "onboardingA") {
+    return (
+      <ScreenOnboarding
+        onStart={() => setBootStep("onboardingB")}
+        onLogin={() => setBootStep("login")}
+      />
+    );
+  }
+
+  if (bootStep === "onboardingB") {
+    return (
+      <ScreenOnboardingB
+        onCreateAccount={() => setBootStep("app")}
+        onLogin={() => setBootStep("login")}
+      />
+    );
   }
 
   return (
-    <PraxiaApp username="admin" onLogout={() => setAuthenticated(false)} />
+    <LoginScreen
+      onLogin={() => {
+        setAuthenticated(true);
+        setBootStep("app");
+      }}
+    />
   );
 }
 

@@ -89,7 +89,7 @@ export function ChatSheet({
           height: "88%",
           background: `
             radial-gradient(120% 60% at 80% 0%, ${accent}22 0%, transparent 50%),
-            linear-gradient(180deg, #0a1030 0%, #050818 80%)
+            linear-gradient(180deg, ${T.surface} 0%, ${T.bg} 80%)
           `,
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,
@@ -132,7 +132,7 @@ export function ChatSheet({
                 height: 10,
                 borderRadius: 5,
                 background: T.up,
-                border: "2px solid #0a1030",
+                border: `2px solid ${T.surface}`,
               }}
             />
           </div>
@@ -167,20 +167,21 @@ export function ChatSheet({
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 6,
+            alignItems: "flex-start",
+            gap: 8,
             padding: "8px 18px",
             background: `${accent}0d`,
             borderBottom: `0.5px solid ${T.hairline}`,
             fontFamily: T.body,
             fontSize: 11,
             color: T.ink70,
+            lineHeight: 1.4,
           }}
         >
           <Icon.shield size={12} color={accent} />
           <span>
-            A Pra sempre cita fontes e ancora cada recomendação no seu perfil. Nada de
-            afirmações sem referência.
+            <b style={{ color: T.ink }}>Sugestões com fonte, não recomendação.</b>{" "}
+            Pra cita origem em cada afirmação e ancora tudo no seu perfil — a decisão final é sua.
           </span>
         </div>
 
@@ -265,6 +266,8 @@ export function ChatSheet({
             }}
           >
             <textarea
+              id="chat-input"
+              name="chat-message"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {

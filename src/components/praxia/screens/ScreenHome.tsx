@@ -10,6 +10,9 @@ import { AreaChart } from "../Charts";
 import { SectionHeader } from "../SectionHeader";
 import { HoldingRow } from "../HoldingRow";
 import { DeltaPill } from "../Tag";
+import { MacroQuotesStrip } from "../MacroQuotesStrip";
+import { DisclaimerBar } from "../DisclaimerBar";
+import { WeeklyPerformanceCard } from "../WeeklyPerformanceCard";
 import type { Stock, InvestorProfile } from "@/types/stock";
 import {
   sectorAllocation,
@@ -28,8 +31,10 @@ interface ScreenHomeProps {
   onSeeAllHoldings: () => void;
   onAddStock: () => void;
   onOpenInsights?: () => void;
-  onMenu?: () => void;
-  onBell?: () => void;
+  onOpenProfile?: () => void;
+  onOpenChat?: () => void;
+  onOpenAlerts?: () => void;
+  activeAlertCount?: number;
 }
 
 export function ScreenHome({
@@ -40,8 +45,10 @@ export function ScreenHome({
   onSeeAllHoldings,
   onAddStock,
   onOpenInsights,
-  onMenu,
-  onBell,
+  onOpenProfile,
+  onOpenChat,
+  onOpenAlerts,
+  activeAlertCount = 0,
 }: ScreenHomeProps) {
   const T = PraxiaTokens;
 
@@ -62,13 +69,27 @@ export function ScreenHome({
     return genSeries(7, 60, Math.max(1000, totalValue || 1000), 0.012, ytdPct >= 0 ? 0.0008 : -0.0006);
   }, [totalValue, ytdPct]);
 
+  // Last 7 entries of the synthetic series → bar chart values, with the
+  // current weekday labels rotated so "today" lands on the last bar.
+  const weekValues = useMemo(() => series.slice(-7), [series]);
+  const weekLabels = useMemo<[string, string, string, string, string, string, string]>(() => {
+    const dow = ["D", "S", "T", "Q", "Q", "S", "S"];
+    const today = new Date().getDay();
+    const rotated: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      rotated.push(dow[(today - 6 + i + 7) % 7]);
+    }
+    return rotated as [string, string, string, string, string, string, string];
+  }, []);
+
   const allocation = useMemo(() => sectorAllocation(stocks), [stocks]);
   const overweight = useMemo(() => dominantSector(stocks), [stocks]);
   const holdings = stocks.slice(0, 4);
 
   return (
     <div
-      className="praxia-scroll"
+      className="praxia-scroll pra-screen"
+      key="home"
       style={{
         position: "relative",
         height: "100dvh",
@@ -98,7 +119,7 @@ export function ScreenHome({
             marginBottom: 4,
           }}
         >
-          <GlassButton onClick={onMenu} ariaLabel="Menu">
+          <GlassButton onClick={onOpenProfile} ariaLabel="Abrir perfil">
             <Icon.menu size={18} color={T.ink70} />
           </GlassButton>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -115,10 +136,57 @@ export function ScreenHome({
               Praxia
             </span>
           </div>
-          <GlassButton onClick={onBell} ariaLabel="Notificações">
-            <Icon.bell size={18} color={T.ink70} />
-          </GlassButton>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {onOpenAlerts && (
+              <button
+                onClick={onOpenAlerts}
+                aria-label="Alertas"
+                style={{
+                  position: "relative",
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  background: "rgba(255,255,255,0.05)",
+                  border: `0.5px solid ${T.hairline}`,
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Icon.bell size={18} color={T.ink70} />
+                {activeAlertCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      right: 4,
+                      minWidth: 16,
+                      height: 16,
+                      padding: "0 4px",
+                      borderRadius: 8,
+                      background: accent,
+                      color: "white",
+                      fontFamily: T.mono,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      display: "grid",
+                      placeItems: "center",
+                      boxShadow: `0 4px 10px ${accent}aa`,
+                    }}
+                  >
+                    {activeAlertCount > 99 ? "99+" : activeAlertCount}
+                  </span>
+                )}
+              </button>
+            )}
+            <GlassButton onClick={onOpenChat} ariaLabel="Falar com a Pra">
+              <Icon.chat size={18} color={T.ink70} />
+            </GlassButton>
+          </div>
         </div>
+
+        {/* macro quotes strip */}
+        <MacroQuotesStrip />
 
         {/* portfolio hero */}
         <PraxiaCard
@@ -194,11 +262,27 @@ export function ScreenHome({
               gap: 8,
             }}
           >
-            <HeroAction icon={<Icon.invest size={18} color={accent} />} label="Investir" onClick={onAddStock} />
-            <HeroAction icon={<Icon.funds size={18} color={accent} />} label="Aportar" />
-            <HeroAction icon={<Icon.withdraw size={18} color={accent} />} label="Resgatar" />
+            <HeroAction
+              icon={<Icon.invest size={18} color={accent} />}
+              label="Investir"
+              onClick={onAddStock}
+            />
+            <HeroAction
+              icon={<Icon.shield size={18} color={accent} />}
+              label="Análise"
+              onClick={onOpenInsights}
+              disabled={stocks.length === 0}
+            />
+            <HeroAction
+              icon={<Icon.chat size={18} color={accent} />}
+              label="Pra"
+              onClick={onOpenChat}
+            />
           </div>
         </PraxiaCard>
+
+        {/* Global disclaimer */}
+        <DisclaimerBar accent={accent} />
 
         {/* AI insight */}
         <AIInsightCard
@@ -209,6 +293,15 @@ export function ScreenHome({
           overweightPct={overweight?.pct ?? 0}
           onOpenInsights={onOpenInsights}
         />
+
+        {/* Weekly performance — bar chart with active day tooltip */}
+        {stocks.length > 0 && (
+          <WeeklyPerformanceCard
+            accent={accent}
+            values={weekValues}
+            labels={weekLabels}
+          />
+        )}
 
         {/* Holdings */}
         <div>
@@ -288,22 +381,26 @@ function HeroAction({
   icon,
   label,
   onClick,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   const T = PraxiaTokens;
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         height: 64,
         borderRadius: 16,
         background: "rgba(255,255,255,0.045)",
         border: `0.5px solid ${T.hairline}`,
         color: T.ink,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",

@@ -58,8 +58,10 @@ export function BottomNav({ tab, onChange, accent = PraxiaTokens.accent }: Botto
             <button
               key={it.k}
               onClick={() => onChange(it.k)}
+              aria-label={it.lbl}
+              aria-current={active ? "page" : undefined}
               style={{
-                flex: 1,
+                flex: active ? 1.45 : 1,
                 height: 44,
                 borderRadius: 22,
                 display: "flex",
@@ -74,11 +76,24 @@ export function BottomNav({ tab, onChange, accent = PraxiaTokens.accent }: Botto
                 fontWeight: 600,
                 fontSize: 12,
                 letterSpacing: -0.1,
-                transition: "all 0.2s",
+                transition:
+                  "flex 0.28s cubic-bezier(.2,.7,.3,1), background 0.2s ease, color 0.2s ease",
+                overflow: "hidden",
+                whiteSpace: "nowrap",
               }}
             >
               {it.render(color)}
-              {active && <span>{it.lbl}</span>}
+              <span
+                style={{
+                  maxWidth: active ? 80 : 0,
+                  opacity: active ? 1 : 0,
+                  transition: "max-width 0.28s cubic-bezier(.2,.7,.3,1), opacity 0.2s ease",
+                  overflow: "hidden",
+                  display: "inline-block",
+                }}
+              >
+                {it.lbl}
+              </span>
             </button>
           );
         })}

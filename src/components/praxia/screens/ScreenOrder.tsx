@@ -44,7 +44,8 @@ export function ScreenOrder({
 
   return (
     <div
-      className="praxia-scroll"
+      className="praxia-scroll pra-screen"
+      key={`order-${stock.ticker}-${type}`}
       style={{
         position: "relative",
         height: "100dvh",
@@ -147,6 +148,8 @@ export function ScreenOrder({
               </svg>
             </StepperButton>
             <input
+              id="shares-input"
+              name="shares"
               type="number"
               min={1}
               value={shares}

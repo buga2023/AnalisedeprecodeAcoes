@@ -4,49 +4,44 @@ import { PraxiaLogo } from "../PraxiaLogo";
 
 interface ScreenOnboardingProps {
   onStart: () => void;
+  onLogin: () => void;
+  /** Mantido para compatibilidade; v0 sempre usa champagne gold. */
   accent?: string;
 }
 
-export function ScreenOnboarding({ onStart, accent = PraxiaTokens.accent }: ScreenOnboardingProps) {
+/**
+ * Tela 1 do onboarding — Engraved direction.
+ *
+ * Composição editorial: wordmark grande no topo + headline em Cormorant
+ * itálico/serif, copy em Manrope, CTA pílula creme. Halo dourado discreto
+ * no fundo. Sem ícones genéricos.
+ */
+export function ScreenOnboarding({ onStart, onLogin }: ScreenOnboardingProps) {
   const T = PraxiaTokens;
   return (
     <div
+      className="pra-screen"
       style={{
         position: "relative",
         height: "100dvh",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
-      <PraxiaBackground accent={accent} />
+      <PraxiaBackground />
+
+      {/* Halo dourado discreto no quadrante inferior — substitui os glow azuis */}
       <div
         style={{
           position: "absolute",
-          bottom: -120,
-          left: -40,
-          right: -40,
-          height: 480,
-          background: `
-            radial-gradient(closest-side at 50% 50%, ${accent} 0%, ${accent}88 30%, transparent 70%),
-            radial-gradient(closest-side at 30% 60%, #8b5cf6aa 0%, transparent 60%)
-          `,
-          filter: "blur(40px)",
-          opacity: 0.7,
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          bottom: 110,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 220,
-          height: 220,
-          borderRadius: "50%",
-          background: `radial-gradient(circle at 30% 30%, white 0%, ${accent} 30%, ${accent}44 60%, transparent 80%)`,
-          opacity: 0.35,
-          filter: "blur(2px)",
+          bottom: "-10%",
+          left: "-20%",
+          right: "-20%",
+          height: "55%",
+          background: `radial-gradient(closest-side at 50% 50%, ${T.gold}28 0%, ${T.gold}10 35%, transparent 70%)`,
+          filter: "blur(48px)",
+          opacity: 0.85,
           pointerEvents: "none",
         }}
       />
@@ -55,55 +50,70 @@ export function ScreenOnboarding({ onStart, accent = PraxiaTokens.accent }: Scre
         style={{
           position: "relative",
           zIndex: 2,
-          padding: "90px 28px 0",
+          padding: "72px 28px 40px",
           flex: 1,
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: 0.95 }}>
-          <PraxiaLogo size={20} accent={accent} />
-          <span
+        {/* Wordmark + caption mono */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <PraxiaLogo size={20} hideRule />
+          <div
             style={{
-              fontFamily: T.display,
-              fontSize: 16,
-              fontWeight: 600,
-              letterSpacing: 0.4,
-              color: T.ink,
+              fontFamily: T.mono,
+              fontSize: 10,
+              color: T.ink30,
+              letterSpacing: 1.6,
+              textTransform: "uppercase",
             }}
           >
-            Praxia
-          </span>
+            Research · Planning
+          </div>
         </div>
 
-        <div style={{ marginTop: "auto", paddingBottom: 56 }}>
+        <div style={{ marginTop: "auto" }}>
+          {/* Cabeçalho serif — protagonista da composição */}
           <h1
             style={{
               margin: 0,
               fontFamily: T.display,
-              fontSize: 46,
-              fontWeight: 600,
-              lineHeight: 1.0,
+              fontSize: 52,
+              fontWeight: 500,
+              lineHeight: 1.02,
               color: T.ink,
               letterSpacing: -1.2,
             }}
           >
-            Invista com
-            <br />
-            uma mente clara.
+            Invista com{" "}
+            <span style={{ fontStyle: "italic", color: T.gold }}>clareza</span>.
           </h1>
+
+          {/* Filete dourado curto abaixo da headline — assinatura editorial */}
+          <div style={{ marginTop: 22, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 36, height: 1, background: T.gold }} />
+            <span
+              style={{
+                width: 4,
+                height: 4,
+                background: T.gold,
+                transform: "rotate(45deg)",
+              }}
+            />
+          </div>
+
           <p
             style={{
-              marginTop: 18,
+              marginTop: 22,
               fontFamily: T.body,
-              fontSize: 15,
-              lineHeight: 1.5,
+              fontSize: 14.5,
+              lineHeight: 1.6,
               color: T.ink70,
-              maxWidth: 300,
+              maxWidth: 340,
             }}
           >
-            Análise, precificação e uma IA que conversa com você para entender suas
-            prioridades — não as do mercado.
+            Análise fundamentalista, precificação e uma assistente que conversa para
+            entender suas prioridades — não as do mercado.
           </p>
 
           <button
@@ -111,44 +121,49 @@ export function ScreenOnboarding({ onStart, accent = PraxiaTokens.accent }: Scre
             style={{
               marginTop: 36,
               height: 56,
-              padding: "0 26px",
+              padding: "0 10px 0 26px",
               display: "inline-flex",
               alignItems: "center",
-              gap: 10,
-              background: T.ink,
-              color: "#05071a",
+              gap: 14,
+              background: T.paper,
+              color: T.paperInk,
               border: "none",
               borderRadius: 999,
               fontFamily: T.display,
-              fontWeight: 600,
+              fontWeight: 500,
               fontSize: 16,
+              letterSpacing: 0.2,
               cursor: "pointer",
-              letterSpacing: -0.1,
-              boxShadow: "0 12px 30px rgba(255,255,255,0.15)",
+              boxShadow: "0 12px 30px rgba(241,234,219,0.10)",
+              transition: "transform 0.18s cubic-bezier(0.2,0,0,1)",
             }}
+            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
             Começar
             <span
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                background: accent,
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                background: T.gold,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <svg
-                width="12"
-                height="12"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="white"
+                stroke={T.paperInk}
                 strokeWidth="2.4"
                 strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <path d="M5 12h14M13 5l7 7-7 7" />
+                <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </span>
           </button>
@@ -156,14 +171,29 @@ export function ScreenOnboarding({ onStart, accent = PraxiaTokens.accent }: Scre
           <div
             style={{
               marginTop: 28,
-              fontFamily: PraxiaTokens.mono,
-              fontSize: 10.5,
+              fontFamily: T.mono,
+              fontSize: 10,
               color: T.ink30,
-              letterSpacing: 1,
-              textTransform: "uppercase",
+              letterSpacing: 1.4,
             }}
           >
-            Plataforma de elite · análise fundamentalista
+            JÁ TEM CONTA?{" "}
+            <button
+              onClick={onLogin}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: T.gold,
+                fontFamily: T.mono,
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: 1.4,
+                cursor: "pointer",
+              }}
+            >
+              ENTRAR
+            </button>
           </div>
         </div>
       </div>

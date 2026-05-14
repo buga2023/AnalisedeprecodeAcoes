@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { Stock } from "@/types/stock";
 import { fetchStockQuote, fetchMultipleQuotes } from "@/lib/api";
 import type { BrapiQuoteResult } from "@/lib/api";
-import { calculateGrahamValue, calculateStockScore } from "@/lib/calculators";
+import { calculateGrahamValue, calculateROIC, calculateStockScore } from "@/lib/calculators";
 import { detectMarket, detectSector, brandColor } from "@/lib/stockMeta";
 
 const STORAGE_KEY = "stocks-ai-portfolio";
@@ -41,6 +41,8 @@ function mapQuoteToStock(
   const netMargin = quote.financialData?.profitMargins ?? 0;
   const totalRevenue = quote.financialData?.totalRevenue ?? 0;
   const ebitdaMargin = totalRevenue > 0 && ebitda > 0 ? ebitda / totalRevenue : 0;
+  const debtToEquity = quote.financialData?.debtToEquity ?? 0;
+  const roic = calculateROIC(ebitda, totalDebt, debtToEquity);
 
   const { total, breakdown } = calculateStockScore({
     price,
@@ -73,6 +75,9 @@ function mapQuoteToStock(
     evEbitda,
     netMargin,
     ebitdaMargin,
+    roic,
+    grahamValue,
+    marginOfSafety: grahamValue > 0 ? ((grahamValue - price) / grahamValue) * 100 : 0,
     name: quote.shortName ?? quote.longName ?? quote.symbol,
     market: detectMarket(quote.symbol),
     sector: detectSector(quote.symbol),

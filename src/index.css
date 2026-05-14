@@ -33,29 +33,31 @@
 :root {
   --radius: 1rem;
 
-  /* Praxia deep navy stack */
-  --background: #05071a;
-  --bg-deep: #020314;
-  --foreground: #ffffff;
-  --card: #0d1330;
-  --card-foreground: #ffffff;
-  --surface-2: #161e44;
+  /* Praxia v0 — Engraved palette (onyx + vellum + champagne gold) */
+  --background: #0a0a10;
+  --bg-deep: #06060a;
+  --foreground: #f4ecdf;
+  --card: #13110d;
+  --card-foreground: #f4ecdf;
+  --surface-2: #1a1610;
 
-  --primary: #5b7cff;
-  --primary-foreground: #ffffff;
-  --secondary: #1e293b;
-  --secondary-foreground: #f8fafc;
-  --muted: #1e293b;
-  --muted-foreground: rgba(255, 255, 255, 0.52);
-  --accent: #5b7cff;
-  --accent-foreground: #ffffff;
-  --destructive: #ff6b81;
-  --border: rgba(255, 255, 255, 0.08);
+  --primary: #c8a25c;
+  --primary-foreground: #1a1610;
+  --secondary: #1a1610;
+  --secondary-foreground: #f4ecdf;
+  --muted: #1a1610;
+  --muted-foreground: rgba(244, 236, 223, 0.52);
+  --accent: #c8a25c;
+  --accent-foreground: #1a1610;
+  --destructive: #c87371;
+  --border: rgba(244, 236, 223, 0.10);
 
-  /* semantic */
-  --up: #42e8a3;
-  --down: #ff6b81;
-  --warn: #ffc857;
+  /* semantic — mais sóbrio que o navy stack */
+  --up: #7fb796;
+  --down: #c87371;
+  --warn: #c8a25c;
+  --gold: #c8a25c;
+  --gold-dim: rgba(200, 162, 92, 0.55);
 }
 
 html,
@@ -79,20 +81,20 @@ body {
   box-sizing: border-box;
 }
 
-/* Premium scrollbar */
+/* Premium scrollbar — onyx + champagne hover */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #020314;
+  background: #06060a;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #1a1610;
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent);
+  background: var(--gold-dim);
 }
 
 /* Hide scrollbars on mobile-shell */
@@ -134,5 +136,93 @@ body {
   40% {
     opacity: 1;
     transform: translateY(-3px);
+  }
+}
+
+@keyframes praScreenIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes praPulseRing {
+  0% {
+    box-shadow: 0 12px 32px var(--accent-glow, rgba(91, 124, 255, 0.4)),
+      0 0 0 0 var(--accent-glow, rgba(91, 124, 255, 0.45)),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  70% {
+    box-shadow: 0 12px 32px var(--accent-glow, rgba(91, 124, 255, 0.4)),
+      0 0 0 18px rgba(91, 124, 255, 0),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  100% {
+    box-shadow: 0 12px 32px var(--accent-glow, rgba(91, 124, 255, 0.4)),
+      0 0 0 0 rgba(91, 124, 255, 0),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+}
+
+@keyframes praShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* The whole screen container fades up when mounted. */
+.pra-screen {
+  animation: praScreenIn 0.36s cubic-bezier(0.2, 0.7, 0.3, 1);
+  scroll-behavior: smooth;
+}
+
+/* Tactile press state for every interactive button — no JS needed. */
+button {
+  transition: transform 0.12s ease, background 0.18s ease, color 0.18s ease,
+    border-color 0.18s ease, box-shadow 0.2s ease;
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* Subtle hover lift for card-style buttons (we mark them with .pra-row). */
+.pra-row {
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.pra-row:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+.pra-row:not(:disabled):active {
+  transform: scale(0.995);
+}
+
+/* Skeleton shimmer for loading placeholders. */
+.pra-skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 30%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 70%
+  );
+  background-size: 200% 100%;
+  animation: praShimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }

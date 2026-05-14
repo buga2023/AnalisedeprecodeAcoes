@@ -40,7 +40,8 @@ export function ScreenOrderReview({
 
   return (
     <div
-      className="praxia-scroll"
+      className="praxia-scroll pra-screen"
+      key={`review-${stock.ticker}-${draft.type}`}
       style={{
         position: "relative",
         height: "100dvh",

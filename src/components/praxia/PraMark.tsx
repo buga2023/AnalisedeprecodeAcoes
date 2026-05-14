@@ -1,36 +1,73 @@
+import { PraxiaTokens } from "./tokens";
+
 interface PraMarkProps {
+  /** Diâmetro do selo em px. */
   size?: number;
+  /** Cor do "P" central — default: parchment (ink). */
+  color?: string;
+  /** Cor do filete circular dourado — default: gold do token. */
+  gold?: string;
+  /** Mantido para compatibilidade com chamadas legacy (sempre usa gold). */
   accent?: string;
 }
 
-/** Pra avatar — circular gradient with the "P" glyph + spark dot. */
-export function PraMark({ size = 22, accent = "#5b7cff" }: PraMarkProps) {
-  const gid = "pra-g-" + accent.replace("#", "") + "-" + size;
-  const sid = "pra-s-" + accent.replace("#", "") + "-" + size;
+/**
+ * Pra · Companion Seal Mark
+ *
+ * Selo circular tipo wax-seal — fino círculo dourado externo + sutil filete
+ * interno + "P" em Cormorant ao centro. Reuso da direção SealMark da brand
+ * exploration. Substitui o antigo monograma com gradient indigo.
+ */
+export function PraMark({
+  size = 22,
+  color = PraxiaTokens.ink,
+  gold = PraxiaTokens.gold,
+  accent: _accent,
+}: PraMarkProps) {
+  void _accent;
+  const innerInset = Math.max(2, Math.round(size * 0.06));
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <defs>
-        <radialGradient id={gid} cx="0.32" cy="0.28" r="0.95">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.85" />
-          <stop offset="38%" stopColor={accent} stopOpacity="1" />
-          <stop offset="100%" stopColor={accent} stopOpacity="0.7" />
-        </radialGradient>
-        <linearGradient id={sid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
-          <stop offset="60%" stopColor="rgba(255,255,255,0)" />
-        </linearGradient>
-      </defs>
-      <circle cx="16" cy="16" r="14" fill={`url(#${gid})`} />
-      <circle cx="16" cy="16" r="14" fill={`url(#${sid})`} />
-      <path d="M12 9.5v13" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
-      <path
-        d="M12 9.5c5.5 0 7.5 2.2 7.5 5s-2 5-7.5 5"
-        stroke="white"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        fill="none"
+    <span
+      role="img"
+      aria-label="Pra"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: PraxiaTokens.bgDeep,
+        border: `1px solid ${gold}`,
+        boxShadow: `0 0 0 0.5px ${PraxiaTokens.bgDeep}, 0 6px 14px rgba(0,0,0,0.45)`,
+      }}
+    >
+      {/* filete interno — concêntrico, dourado fraco */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: innerInset,
+          borderRadius: "50%",
+          border: `0.5px solid ${gold}`,
+          opacity: 0.5,
+        }}
       />
-      <circle cx="16.5" cy="14.5" r="1.4" fill="white" />
-    </svg>
+      <span
+        style={{
+          fontFamily: PraxiaTokens.display,
+          fontSize: size * 0.55,
+          fontWeight: 500,
+          color,
+          lineHeight: 1,
+          // ajuste óptico do P em Cormorant
+          transform: "translateY(-3%)",
+          letterSpacing: 0,
+        }}
+      >
+        P
+      </span>
+    </span>
   );
 }

@@ -16,22 +16,27 @@ export function FloatingPraButton({
     <button
       onClick={onClick}
       aria-label="Conversar com a Pra"
-      style={{
-        position: "absolute",
-        right: 16,
-        bottom: 100,
-        zIndex: 5,
-        width: 58,
-        height: 58,
-        borderRadius: 29,
-        border: "none",
-        cursor: "pointer",
-        background: `linear-gradient(140deg, ${accent}, ${accent}aa)`,
-        boxShadow: `0 12px 32px ${accent}66, 0 0 0 4px ${accent}22, inset 0 1px 0 rgba(255,255,255,0.3)`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={
+        {
+          position: "absolute",
+          right: 16,
+          bottom: 100,
+          zIndex: 5,
+          width: 58,
+          height: 58,
+          borderRadius: 29,
+          border: "none",
+          cursor: "pointer",
+          background: `linear-gradient(140deg, ${accent}, ${accent}aa)`,
+          boxShadow: `0 12px 32px ${accent}66, 0 0 0 4px ${accent}22, inset 0 1px 0 rgba(255,255,255,0.3)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          // Drive the keyframe-based pulse using the current accent color.
+          ["--accent-glow" as string]: `${accent}73`,
+          animation: "praPulseRing 2.6s ease-out infinite",
+        } as React.CSSProperties
+      }
     >
       <PraMark size={36} accent={accent} />
       {hasNew && (
@@ -44,7 +49,7 @@ export function FloatingPraButton({
             height: 14,
             borderRadius: 7,
             background: PraxiaTokens.up,
-            border: "2px solid #05071a",
+            border: `2px solid ${PraxiaTokens.bg}`,
           }}
         />
       )}

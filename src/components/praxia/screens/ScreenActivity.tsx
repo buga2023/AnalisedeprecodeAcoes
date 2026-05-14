@@ -4,6 +4,7 @@ import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { Icon } from "../Icon";
 import { StockAvatar } from "../StockAvatar";
+import { StatusTag } from "../Tag";
 import type { Transaction } from "@/types/stock";
 
 interface ScreenActivityProps {
@@ -34,7 +35,8 @@ export function ScreenActivity({ transactions, accent = PraxiaTokens.accent }: S
 
   return (
     <div
-      className="praxia-scroll"
+      className="praxia-scroll pra-screen"
+      key="activity"
       style={{
         position: "relative",
         height: "100dvh",
@@ -212,16 +214,14 @@ function TxRow({ tx, isLast }: { tx: Transaction; isLast: boolean }) {
         </div>
         <div
           style={{
-            fontFamily: T.body,
-            fontSize: 10.5,
-            color: T.ink30,
-            marginTop: 2,
+            marginTop: 4,
+            display: "flex",
+            justifyContent: "flex-end",
           }}
         >
-          {new Date(tx.timestamp).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          <StatusTag color="rgba(66,232,163,0.16)" text={T.up}>
+            Executada
+          </StatusTag>
         </div>
       </div>
     </div>
