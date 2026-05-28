@@ -20,5 +20,17 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    server: {
+      watch: {
+        // Ignora pastas geradas (testes, coverage, build) — sem isso o
+        // vitest/coverage dispara HMR em loop e quebra o dev.
+        ignored: [
+          "**/node_modules/**",
+          "**/dist/**",
+          "**/coverage/**",
+          "**/.git/**",
+        ],
+      },
+    },
   };
 });
