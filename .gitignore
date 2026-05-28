@@ -29,3 +29,12 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# Coverage e artefatos de teste
+coverage
+.nyc_output
+
+# Configs locais de ferramentas (cada dev tem a sua)
+.claude/
+.mcp.json
+.playwright-mcp/
