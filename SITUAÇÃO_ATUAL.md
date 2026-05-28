@@ -1,6 +1,6 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-28. Reflete o estado após a sessão de planejamento do roadmap completo + início da implementação da Fase 0.
+> Documento vivo. Última atualização: 2026-05-28 (segunda passagem). Reflete o estado após Fases 0, 0.5, 1 (ScreenAnalysis) e 2 (#6 Notícias por ação + sentimento) concluídas.
 
 ---
 
@@ -41,7 +41,7 @@ Referência viva do design: `.praxia-design/` (não vai para o bundle).
 | IA | `/api/ai` multi-provider: Groq (default) / OpenAI / Anthropic / Gemini |
 | Fontes | Cormorant, Playfair, EB Garamond, Manrope, JetBrains Mono |
 
-**Build atual** (2026-05-28): `npm run build` OK, ~295 KB + ~459 KB (xlsx chunk), sem erros TS.
+**Build atual** (2026-05-28, pós Fase 2): `npm run build` OK, **321 KB** index (+26 KB pela Fase 2) + ~459 KB (xlsx chunk), 0 erros TS, 0 erros lint novos.
 
 ---
 
@@ -76,22 +76,39 @@ Referência viva do design: `.praxia-design/` (não vai para o bundle).
 
 ## 4. O que mudou nesta sessão (2026-05-28)
 
-### Bug corrigido — Alerta de margem Graham
+### Fase 0 — UX de descoberta de valuation (✅)
+Adicionada seção "Valuation — Como calculamos" em `ScreenStockDetail` antes da `StockAIAnalysisSection`. Contém:
+- **6 células de valuation**: Graham VI (√22,5×LPA×VPA), Teto Bazin (DPA÷0,06), Graham c/ Crescimento (LPA×(8,5+2×7)), Margem de Segurança, ROIC, Preço vs. Graham — cada uma com a fórmula em mono e tooltip explicativo.
+- **Score breakdown visual**: 5 barras de progresso (Graham/Rentabilidade/Saúde/DY/Valuation) com pts/max e valor real do ativo vs. limiar.
+- **CTA Batch Valuation**: botão "Calcule em lote — importe sua planilha" — agora cabeado em `App.tsx:381`.
+
+**Ícones adicionados a Icon.tsx**: `upload`, `tableRows`.
+
+### Fase 0.5 — Bug corrigido (✅)
 **Arquivo**: `src/hooks/useAlerts.ts` linhas 42 e 60.
 
 `calculateMarginOfSafety` retorna percentual (ex: 24 para 24%), mas o código multiplicava por 100 de novo → comparava 2400 ≥ 20, alerta disparava sempre.
 
 **Fix**: removido o `× 100` nas duas ocorrências. Agora a comparação é `margin(%) >= alert.value(%)`, que é o comportamento correto.
 
-### Seção "Valuation — Como calculamos" em ScreenStockDetail
-Adicionada antes da `StockAIAnalysisSection`. Contém:
-- **6 células de valuation**: Graham VI (√22,5×LPA×VPA), Teto Bazin (DPA÷0,06), Graham c/ Crescimento (LPA×(8,5+2×7)), Margem de Segurança, ROIC, Preço vs. Graham — cada uma com a fórmula em mono e tooltip explicativo.
-- **Score breakdown visual**: 5 barras de progresso (Graham/Rentabilidade/Saúde/DY/Valuation) com pts/max e valor real do ativo vs. limiar.
-- **CTA Batch Valuation**: botão "Calcule em lote — importe sua planilha" (visível se prop `onOpenBatch` fornecido).
+### Fase 1 — ScreenAnalysis: tela central de análise (✅)
+Nova aba "Análise" no BottomNav (substitui a posição de "Atividade" no nav principal — Atividade segue acessível via Profile). Estrutura:
+- `src/lib/portfolioScore.ts` — score agregado da carteira
+- `src/components/praxia/PortfolioScoreHero.tsx` — hero com score e variação do dia
+- `src/components/praxia/PortfolioInsightsContent.tsx` — extraído do `PortfolioInsightsModal` para uso embutido na tela
+- `src/components/praxia/screens/ScreenAnalysis.tsx` — tela com hero, mini-métricas (retorno YTD, nº ativos, setor líder), insights IA, movimentos do dia, melhores scores, alocação setorial
+- `App.tsx` — `Screen` union recebe `"analysis"`, `BottomNav` mostra a aba
 
-**Ícones adicionados a Icon.tsx**: `upload`, `tableRows`.
+### Fase 2 — Feature #6: Notícias por ação + sentimento (✅)
+Manchetes do ticker classificadas pela Pra (sentimento positivo/neutro/negativo + sinalização "material" + 1 frase de impacto), com cache 1h por ticker.
+- `src/lib/stockNews.ts` — `analisarNoticiasAcao(ticker, profile)`, `getCachedStockNews(ticker)`, `clearStockNewsCache()`
+- `src/hooks/useStockNews.ts` — hook com `load` (lazy on-demand), `refresh` (ignora cache), `fromCache`
+- `src/components/praxia/StockNewsSection.tsx` — seção visual com pill de sentimento por item, badge MATERIAL, impacto colorido e fontes
+- `src/components/praxia/MaterialEventBanner.tsx` — banner no topo do `ScreenHome` que aparece SÓ se houver cache fresco (< 24h) com item material em algum ticker da carteira; tap abre o stock detail
+- Integração em `ScreenStockDetail.tsx` (entre `StockAIAnalysisSection` e `StockReportsSection`) e `ScreenHome.tsx` (após `MacroQuotesStrip`)
 
-**Prop adicionada**: `onOpenBatch?: () => void` em `ScreenStockDetailProps` — ainda não cabeada em `App.tsx` (próximo passo).
+**Endpoints reutilizados**: `/api/news?ticker=X` (já existia), `/api/ai` (já existia).
+**Nova chave de cache**: `praxia-stock-news:{TICKER}` (TTL 1h).
 
 ---
 
