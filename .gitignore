@@ -33,6 +33,8 @@ dist-ssr
 # Coverage e artefatos de teste
 coverage
 .nyc_output
+test-results/
+playwright-report/
 
 # Configs locais de ferramentas (cada dev tem a sua)
 .claude/
