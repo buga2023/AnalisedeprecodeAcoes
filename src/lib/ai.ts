@@ -12,6 +12,8 @@ import {
   type NewsBundle,
 } from "./context";
 import { PRAXIA_SYSTEM_PROMPT } from "./praxiaPrompt";
+import { buildOptionalChainsBlock } from "./transmissionChains";
+import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
 
 // Re-exporta pra compatibilidade com imports antigos. Fonte unica em praxiaPrompt.ts.
 export { PRAXIA_SYSTEM_PROMPT };
@@ -77,31 +79,12 @@ function describeProfile(profile: InvestorProfile | null | undefined): string {
   return `PERFIL DO USUARIO: risco ${risk}; horizonte ${horizon}; interesses: ${interests || "nao informado"}.`;
 }
 
-/** Bloco de regras compartilhado por TODOS os prompts. */
-const SOURCE_AND_PROFILE_RULES = `
-REGRAS OBRIGATORIAS (NUNCA QUEBRE):
-0. ENQUADRAMENTO: voce gera SUGESTOES com fonte para um app de paper trading.
-   NAO esta dando recomendacao personalizada de investimento. Sempre que falar
-   de comprar/vender/segurar, deixe claro que e SUGESTAO baseada nos dados e
-   no perfil — a decisao final e do usuario.
-1. PERFIL: TODA sugestao DEVE comecar referenciando o perfil do usuario.
-   Exemplo: "Pelo seu perfil moderado, ...". Sem perfil definido, NAO sugira
-   ativo especifico — peca o perfil primeiro.
-2. FONTES: Para CADA afirmacao fatual (preco, multiplo, noticia, resultado
-   financeiro, evento macro, evento politico) inclua a fonte no campo "fontes":
-   - URL completa de noticia (use os links do bloco "NOTICIAS RECENTES" abaixo
-     quando estiver citando manchetes ou eventos politicos/sociais),
-   - URL de RI / B3 / CVM / orgao oficial,
-   - "Yahoo Finance" para preco/historico/fundamentos atuais,
-   - "Banco Central do Brasil (SGS)" para SELIC, IPCA, CDI, IBC-Br, IGP-M,
-   - "calculo do app" para valores derivados (Graham, score, margem de seguranca),
-   - "perfil do usuario" para informacao do quiz.
-3. Se NAO tiver fonte verificavel para um fato, escreva "(sem fonte verificavel)"
-   e NAO afirme o fato. Nunca invente preco, multiplo ou noticia.
-4. Numere o texto com [1], [2]... fazendo match com a ordem do array "fontes".
-5. Sempre encerre lembrando que a decisao e do usuario quando der sugestao de
-   compra/venda/segurar.
-`;
+/**
+ * Lembrete curto para reforcar as regras do system prompt em cada user prompt.
+ * As regras COMPLETAS vivem em <rules> do PRAXIA_SYSTEM_PROMPT (praxiaPrompt.ts).
+ * Mantemos so um ponteiro aqui pra economizar tokens — o LLM ja tem o contexto.
+ */
+const RULES_REMINDER = `Siga as <rules> e o <output_format> do system: comece com perfil, cite [n] com fonte verificavel em "fontes", nunca invente. Decisao final e do usuario.`;
 
 /** Dados quantitativos da acao usados como insumo para a analise. */
 export interface DadosQuantitativos {
@@ -169,7 +152,7 @@ ${stocksData}
 
 ${contextBlock}
 
-${SOURCE_AND_PROFILE_RULES}
+${RULES_REMINDER}
 
 INSTRUCOES DE SAIDA:
 1. Responda EXCLUSIVAMENTE em formato JSON valido, sem markdown, sem blocos de codigo.
@@ -263,10 +246,14 @@ export async function fetchAIInsights(
     ...topTickers.map((t) => fetchTickerNews(t, 3)),
   ]);
   const bundles: NewsBundle[] = [newsPolitica, newsEconomia, newsCrise, ...tickerNews];
-  const contextBlock = buildContextBlock({ macro, news: bundles, worldNews });
+  const baseContextBlock = buildContextBlock({ macro, news: bundles, worldNews });
+  // Injeta cadeias setoriais opcionais (petroleo, china/minerio, tarifas EUA,
+  // fiscal BR) so quando o contexto bate em keywords relacionadas — economiza
+  // tokens nos casos comuns sem perder sinal nos casos especificos.
+  const contextBlock = baseContextBlock + buildOptionalChainsBlock(baseContextBlock);
 
   const prompt = buildPortfolioPrompt(stocks, profile, contextBlock);
-  const result = await callAIServerless<AIResponse>(prompt, "json_object");
+  const result = await callAIServerless<AIResponse>(prompt, "json_object", "insights");
 
   // Defesa: garante o array de fontes nos insights, mesmo que o modelo esqueça.
   if (!Array.isArray(result.fontes)) result.fontes = [];
@@ -320,11 +307,13 @@ export async function analisarAcaoComIA(
       fetchWorldNews(),
     ]);
 
-  const contextBlock = buildContextBlock({
+  const baseContextBlock = buildContextBlock({
     macro,
     news: [newsTicker, newsPolitica, newsEconomia, newsCrise],
     worldNews,
   });
+  // Cadeias setoriais opcionais sob demanda (mesma logica de fetchAIInsights).
+  const contextBlock = baseContextBlock + buildOptionalChainsBlock(baseContextBlock + " " + ticker);
 
   const prompt = `Voce e Pra, analista fundamentalista da Praxia especializada em B3.
 Analise a acao ${ticker} (${nomeEmpresa}) levando em conta fundamentos, contexto
@@ -372,7 +361,7 @@ INSTRUCOES DE RENTABILIDADE:
 
 ${contextBlock}
 
-${SOURCE_AND_PROFILE_RULES}
+${RULES_REMINDER}
 
 INSTRUCOES ADICIONAIS:
 - Ao mencionar eventos politicos/sociais/macro, SEMPRE cite a URL exata da
@@ -387,7 +376,7 @@ Retorne SOMENTE um JSON valido, sem markdown:
 {
   "resumoTrimestral": "Resumo 2-3 frases combinando resultado + macro/politica relevante, com [n]",
   "recomendacao": "COMPRAR" | "SEGURAR" | "VENDER",
-  "justificativa": "Comece com 'Pelo seu perfil [risco]...'. 2-4 frases conectando fundamentos + macro/politica/social ao perfil, com [n]",
+  "justificativa": "1-2 frases CURTAS sobre o angulo qualitativo (macro, noticia, setor, regulacao) que reforcam ou contradizem a tese. NAO repita Graham/Score/MoS — o app ja exibe esses numeros deterministicamente acima. Foque no que SO o LLM consegue dizer.",
   "redFlags": ["alerta com [n] referenciando fonte (noticia, macro, RI ou calculo)"],
   "comparacaoTrimestre": "Comparacao com trimestre anterior + impacto macro em 1-2 frases com [n]",
   "periodoAnalisado": "ex: 3T24 vs 2T24",
@@ -398,7 +387,7 @@ Responda em portugues brasileiro e NUNCA use emojis. Se faltar fonte para algo,
 escreva "(sem fonte verificavel)" e NAO afirme o fato. Toda noticia citada
 DEVE ter o link correspondente no array "fontes".`;
 
-  const analise = await callAIServerless<AnaliseIA>(prompt, "json_object");
+  const analise = await callAIServerless<AnaliseIA>(prompt, "json_object", "analise");
   analise.fonte = dadosRI.fonte || "";
 
   const recsValidas = ["COMPRAR", "SEGURAR", "VENDER"];
@@ -452,6 +441,54 @@ export interface ComparacaoIA {
   fontes: string[];
 }
 
+/* Cache local de comparacoes — chave estavel pelos tickers ordenados + perfil. */
+const COMPARE_CACHE_PREFIX = "praxia-compare:";
+const COMPARE_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2h
+
+interface CompareCacheEntry {
+  savedAt: number;
+  signature: string;
+  payload: ComparacaoIA;
+}
+
+function compareCacheKey(stocks: PortfolioData[]): string {
+  return COMPARE_CACHE_PREFIX + stocks.map((s) => s.ticker.toUpperCase()).sort().join(",");
+}
+
+function compareSignature(stocks: PortfolioData[], profile: InvestorProfile | null): string {
+  // Score + perfil — mudou material? recalcula. So oscilacao de preco nao invalida.
+  const stocksSig = stocks
+    .map((s) => `${s.ticker}:${s.score}:${Math.round(s.roe * 20)}`)
+    .sort()
+    .join("|");
+  const profSig = profile
+    ? `${profile.risk}-${profile.horizon}-${(profile.interests ?? []).slice().sort().join(",")}`
+    : "noprof";
+  return `${stocksSig}#${profSig}`;
+}
+
+function readCompareCache(stocks: PortfolioData[], sig: string): ComparacaoIA | null {
+  try {
+    const raw = localStorage.getItem(compareCacheKey(stocks));
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as CompareCacheEntry;
+    if (entry.signature !== sig) return null;
+    if (Date.now() - entry.savedAt > COMPARE_CACHE_TTL_MS) return null;
+    return entry.payload;
+  } catch {
+    return null;
+  }
+}
+
+function writeCompareCache(stocks: PortfolioData[], sig: string, payload: ComparacaoIA) {
+  try {
+    const entry: CompareCacheEntry = { savedAt: Date.now(), signature: sig, payload };
+    localStorage.setItem(compareCacheKey(stocks), JSON.stringify(entry));
+  } catch {
+    /* quota cheia: ignora */
+  }
+}
+
 export async function compararAcoesComIA(
   stocks: PortfolioData[],
   profile: InvestorProfile | null = null
@@ -461,6 +498,13 @@ export async function compararAcoesComIA(
   }
   if (stocks.length > 4) {
     throw new Error("No máximo 4 ações por comparação.");
+  }
+
+  const sig = compareSignature(stocks, profile);
+  const cached = readCompareCache(stocks, sig);
+  if (cached) {
+    recordHit("comparacao");
+    return cached;
   }
 
   const stocksData = stocks
@@ -483,7 +527,7 @@ ${describeProfile(profile)}
 ATIVOS A COMPARAR (dados via BrAPI / Yahoo Finance):
 ${stocksData}
 
-${SOURCE_AND_PROFILE_RULES}
+${RULES_REMINDER}
 
 Retorne SOMENTE um JSON valido, sem markdown:
 {
@@ -505,7 +549,7 @@ Retorne SOMENTE um JSON valido, sem markdown:
 
 Responda em portugues brasileiro, sem emojis. Se nao tiver fonte para algo, escreva "sem fonte verificavel" e nao afirme o fato.`;
 
-  const result = await callAIServerless<ComparacaoIA>(prompt, "json_object");
+  const result = await callAIServerless<ComparacaoIA>(prompt, "json_object", "comparacao");
 
   if (!Array.isArray(result.itens)) result.itens = [];
   if (!Array.isArray(result.fontes)) result.fontes = [];
@@ -516,12 +560,220 @@ Responda em portugues brasileiro, sem emojis. Se nao tiver fonte para algo, escr
     fontes: Array.isArray(it.fontes) ? it.fontes : [],
   }));
 
+  writeCompareCache(stocks, sig, result);
+  return result;
+}
+
+/* ─── Fase 3: Otimização de dividendos ──────────────────────────────────── */
+
+/** Item da carteira simplificado para o otimizador. */
+export interface OptimizeStockInput {
+  ticker: string;
+  preco: number;
+  quantidade: number;
+  dividendYield: number; // fração 0..1
+  score: number; // 0..100
+  setor?: string;
+}
+
+/** Candidato externo (ex.: vindo do IBOV) opcional. */
+export interface OptimizeCandidate {
+  ticker: string;
+  preco: number;
+  dividendYield: number;
+  score: number;
+  setor?: string;
+  nome?: string;
+}
+
+export interface OtimizacaoDividendosRecomendacao {
+  /** Ticker atual a reduzir peso ou vender; null = só comprar candidato. */
+  vender: string | null;
+  /** Ticker a aumentar peso ou comprar; null = só vender (raro). */
+  comprar: string | null;
+  /** Acao em texto curto ("Trocar ITUB4 por BBAS3"). */
+  acao: string;
+  /** Variacao estimada de DY medio da carteira em pontos percentuais (0.4 = +0,4pp). */
+  dyDeltaPp: number;
+  justificativa: string;
+  fontes: string[];
+}
+
+export interface OtimizacaoDividendosIA {
+  recomendacoes: OtimizacaoDividendosRecomendacao[];
+  dyMedioAtualPct: number;
+  dyMedioProjetadoPct: number;
+  resumo: string;
+  fontes: string[];
+}
+
+/**
+ * Sugere ajustes na carteira pra subir o DY medio sem sacrificar qualidade.
+ * Trabalha com dados REAIS:
+ *  - `stocks`: posicoes do usuario (preco, qty, DY, score atuais).
+ *  - `annualProjected`: total anual projetado em R$ (do useDividendCalendar).
+ *  - `candidates`: universo externo OPCIONAL ja pre-filtrado pela UI; vazio = LLM
+ *    so sugere rebalance interno (aumentar peso de tickers da propria carteira
+ *    com DY > media). Sem inventar tickers.
+ */
+export async function otimizarDividendosComIA(
+  stocks: OptimizeStockInput[],
+  annualProjected: number,
+  profile: InvestorProfile | null,
+  candidates: OptimizeCandidate[] = []
+): Promise<OtimizacaoDividendosIA> {
+  const eligible = stocks.filter((s) => s.quantidade > 0 && s.preco > 0);
+  if (eligible.length === 0) {
+    throw new Error("Sem ativos com posicao para otimizar.");
+  }
+
+  // Calcula DY medio ponderado REAL (em codigo, nao confia no LLM pra isso).
+  const totalValue = eligible.reduce((acc, s) => acc + s.preco * s.quantidade, 0);
+  const dyWeighted =
+    totalValue > 0
+      ? eligible.reduce((acc, s) => acc + s.dividendYield * s.preco * s.quantidade, 0) / totalValue
+      : 0;
+  const scoreAvg =
+    eligible.reduce((acc, s) => acc + s.score, 0) / eligible.length;
+
+  // Filtra candidatos por qualidade: DY > media atual E score >= media - 10.
+  // Mantem no max 8 candidatos pra nao inflar o prompt.
+  const filteredCandidates = candidates
+    .filter(
+      (c) =>
+        c.dividendYield > dyWeighted &&
+        c.score >= scoreAvg - 10 &&
+        !eligible.some((s) => s.ticker === c.ticker)
+    )
+    .sort((a, b) => b.dividendYield - a.dividendYield)
+    .slice(0, 8);
+
+  const portfolioLines = eligible
+    .map(
+      (s) =>
+        `- ${s.ticker}: posicao R$${(s.preco * s.quantidade).toFixed(2)} ` +
+        `(${s.quantidade} x R$${s.preco.toFixed(2)}), DY ${(s.dividendYield * 100).toFixed(2)}%, ` +
+        `score ${s.score}/100${s.setor ? `, setor ${s.setor}` : ""}`
+    )
+    .join("\n");
+
+  const candidatesLines =
+    filteredCandidates.length > 0
+      ? filteredCandidates
+          .map(
+            (c) =>
+              `- ${c.ticker}${c.nome ? ` (${c.nome})` : ""}: preco R$${c.preco.toFixed(2)}, ` +
+              `DY ${(c.dividendYield * 100).toFixed(2)}%, score ${c.score}/100` +
+              `${c.setor ? `, setor ${c.setor}` : ""}`
+          )
+          .join("\n")
+      : "(Nenhum candidato externo fornecido — sugira apenas rebalance interno ou marque que nao ha troca util.)";
+
+  const prompt = `Voce e Pra, analista da Praxia. Objetivo: aumentar o DY medio
+ponderado da carteira do usuario PRESERVANDO qualidade (score fundamentalista
+ponderado nao deve cair mais que 10 pontos).
+
+${describeProfile(profile)}
+
+=== CARTEIRA ATUAL (dados Yahoo Finance + calculo do app) ===
+${portfolioLines}
+
+DY medio ponderado ATUAL: ${(dyWeighted * 100).toFixed(2)}%
+Total anual de dividendos projetado: R$${annualProjected.toFixed(2)} (fonte: useDividendCalendar)
+Score medio: ${scoreAvg.toFixed(1)}/100
+=== FIM ===
+
+=== CANDIDATOS EXTERNOS DISPONIVEIS (ja filtrados por qualidade) ===
+${candidatesLines}
+=== FIM ===
+
+${RULES_REMINDER}
+
+REGRAS DURAS:
+- Nao invente tickers. So use tickers que aparecem nas duas listas acima.
+- Se nao houver troca util (candidatos fracos, carteira ja otimizada), retorne
+  array vazio em "recomendacoes" e explique no "resumo".
+- Maximo 3 recomendacoes. Cada uma deve elevar DY medio em pelo menos 0.2pp.
+- "dyDeltaPp" deve ser o ganho ESTIMADO em pontos percentuais de DY medio
+  ponderado apos aplicar a troca (positivo).
+- Justificativa curta (2 frases) referenciando perfil, DY e score.
+- "vender" pode ser null se for so comprar (aumentar exposicao com dividendos
+  acumulados). "comprar" idem.
+
+Retorne SOMENTE um JSON valido, sem markdown:
+{
+  "dyMedioAtualPct": ${(dyWeighted * 100).toFixed(2)},
+  "dyMedioProjetadoPct": numero apos aplicar todas as recomendacoes,
+  "resumo": "Comece com 'Pelo seu perfil [risco]...'. 1-2 frases.",
+  "recomendacoes": [
+    {
+      "vender": "TICKER ou null",
+      "comprar": "TICKER ou null",
+      "acao": "Trocar X por Y",
+      "dyDeltaPp": 0.4,
+      "justificativa": "Texto 2 frases com [1] [2]",
+      "fontes": ["Yahoo Finance", "calculo do app", "perfil do usuario"]
+    }
+  ],
+  "fontes": ["Yahoo Finance", "calculo do app", "perfil do usuario"]
+}
+
+Responda em portugues brasileiro, sem emojis. Toda recomendacao DEVE ter fontes.`;
+
+  const result = await callAIServerless<OtimizacaoDividendosIA>(prompt, "json_object");
+
+  if (!Array.isArray(result.recomendacoes)) result.recomendacoes = [];
+  if (!Array.isArray(result.fontes)) result.fontes = ["calculo do app", "Yahoo Finance"];
+  result.recomendacoes = result.recomendacoes
+    .map((r) => ({
+      vender: r.vender ?? null,
+      comprar: r.comprar ?? null,
+      acao: r.acao ?? "",
+      dyDeltaPp: typeof r.dyDeltaPp === "number" ? r.dyDeltaPp : 0,
+      justificativa: r.justificativa ?? "",
+      fontes: Array.isArray(r.fontes) && r.fontes.length > 0 ? r.fontes : ["calculo do app"],
+    }))
+    // Defesa: descarta recomendacoes que citam ticker fora das listas.
+    .filter((r) => {
+      const known = new Set<string>([
+        ...eligible.map((s) => s.ticker),
+        ...filteredCandidates.map((c) => c.ticker),
+      ]);
+      if (r.vender && !known.has(r.vender)) return false;
+      if (r.comprar && !known.has(r.comprar)) return false;
+      return true;
+    });
+
+  // Garante numericos reais quando LLM retorna lixo.
+  if (typeof result.dyMedioAtualPct !== "number") {
+    result.dyMedioAtualPct = Math.round(dyWeighted * 10000) / 100;
+  }
+  if (typeof result.dyMedioProjetadoPct !== "number") {
+    result.dyMedioProjetadoPct = result.dyMedioAtualPct;
+  }
+  if (!result.resumo) {
+    result.resumo = "Carteira ja apresenta DY equilibrado para o perfil informado.";
+  }
+
   return result;
 }
 
 // PRAXIA_SYSTEM_PROMPT mestre vive em src/lib/praxiaPrompt.ts (re-exportado no topo).
 
-async function callAIServerless<T>(prompt: string, responseFormat: string = "text"): Promise<T> {
+async function callAIServerless<T>(
+  prompt: string,
+  responseFormat: string = "text",
+  capability: "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" = "insights"
+): Promise<T> {
+  // Rate-limit preventivo — barra antes de bater 429 no provider gratuito.
+  const gate = checkRateLimit();
+  if (!gate.allowed) {
+    const seconds = Math.ceil(gate.retryAfterMs / 1000);
+    throw new Error(
+      `Limite de chamadas IA atingido (Groq free tier). Aguarde ~${seconds}s.`
+    );
+  }
+
   const response = await fetch(AI_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -531,7 +783,7 @@ async function callAIServerless<T>(prompt: string, responseFormat: string = "tex
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
-      max_tokens: 2048,
+      max_tokens: 1200,
       response_format: { type: responseFormat },
     }),
   });
@@ -547,6 +799,13 @@ async function callAIServerless<T>(prompt: string, responseFormat: string = "tex
   if (!textContent) {
     throw new Error("Resposta vazia da IA.");
   }
+
+  // Telemetria: estimativa de tokens in (system prompt + user) / out (resposta).
+  recordCall(
+    capability,
+    estimateTokens(PRAXIA_SYSTEM_PROMPT) + estimateTokens(prompt),
+    estimateTokens(String(textContent))
+  );
 
   let cleanJson = String(textContent).trim();
   if (cleanJson.startsWith("```json")) cleanJson = cleanJson.slice(7);

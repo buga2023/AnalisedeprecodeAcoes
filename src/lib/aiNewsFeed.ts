@@ -6,6 +6,7 @@ import {
   describeProfileLine,
   describePortfolioLine,
 } from "./praxiaPrompt";
+import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
 
 /**
  * Análise IA POR NOTÍCIA INDIVIDUAL — cruza a manchete com a carteira do
@@ -59,12 +60,48 @@ function portfolioSignature(stocks: Stock[]): string {
     .join(",");
 }
 
-/** Chave de cache por URL + assinatura. URLs longas viram hash curto. */
+type NewsCategoria = AnaliseNoticiaIA["categoria"];
+
+/**
+ * Classifica categoria da noticia por keyword no titulo — barato e
+ * deterministico. Quando bate, dispensamos a IA de decidir, economizando
+ * tokens de output. Retorna null quando incerto -> deixa pra IA.
+ */
+function classifyCategoriaByTitle(titulo: string): NewsCategoria | null {
+  const t = titulo.toLowerCase();
+  // Ordem importa: padroes mais especificos primeiro.
+  if (/\b(guerra|conflito|missil|ataque|invasao|cessar[- ]fogo|bombardei)/i.test(t)) {
+    return "guerra";
+  }
+  if (/\b(aquisic|aquisi[cç]|oferta|fus[aã]o|m&a|takeover|recompra|follow[- ]on|spin[- ]off)\b/i.test(t)) {
+    return "ma-corporativo";
+  }
+  if (/\b(despenc|tomba|cai\s+\d|queda\s+forte|circuit\s+breaker|tomba\s+em\s+b)/i.test(t)) {
+    return "queda-acoes";
+  }
+  if (/\b(selic|copom|ipca|cdi|ibc-br|igp-m|inflac|fed|juros|banco central|bcb)\b/i.test(t)) {
+    return "macro";
+  }
+  return null;
+}
+
+/**
+ * Hash composto djb2 + FNV-1a — 64 bits efetivos, sync, sem dep. Probabilidade
+ * de colisao para ~1000 URLs de noticias e desprezivel (~1 em 10^15). Solucao
+ * pragmatica pra evitar cascata async via crypto.subtle.digest.
+ */
 function cacheKeyFor(url: string): string {
-  // djb2 hash — estável, sem dep externa
-  let hash = 5381;
-  for (let i = 0; i < url.length; i++) hash = ((hash << 5) + hash + url.charCodeAt(i)) | 0;
-  return `${CACHE_KEY_PREFIX}${(hash >>> 0).toString(36)}`;
+  let djb2 = 5381;
+  let fnv = 0x811c9dc5;
+  for (let i = 0; i < url.length; i++) {
+    const c = url.charCodeAt(i);
+    djb2 = ((djb2 << 5) + djb2 + c) | 0;
+    fnv = (fnv ^ c) >>> 0;
+    fnv = (fnv + ((fnv << 1) + (fnv << 4) + (fnv << 7) + (fnv << 8) + (fnv << 24))) >>> 0;
+  }
+  const hi = (djb2 >>> 0).toString(36).padStart(7, "0");
+  const lo = fnv.toString(36).padStart(7, "0");
+  return `${CACHE_KEY_PREFIX}${hi}${lo}`;
 }
 
 function readCache(url: string, sig: string): AnaliseNoticiaIA | null {
@@ -108,7 +145,23 @@ export async function analisarNoticiaParaCarteira(
 ): Promise<AnaliseNoticiaIA> {
   const sig = portfolioSignature(stocks);
   const cached = readCache(item.link, sig);
-  if (cached) return cached;
+  if (cached) {
+    recordHit("news_feed");
+    return cached;
+  }
+
+  // Rate-limit guard preventivo.
+  const gate = checkRateLimit();
+  if (!gate.allowed) {
+    const seconds = Math.ceil(gate.retryAfterMs / 1000);
+    throw new Error(`Limite de chamadas IA atingido. Aguarde ~${seconds}s.`);
+  }
+
+  // Classifier deterministico: se conseguir, omite o campo do schema da IA.
+  const categoriaPreClassificada = classifyCategoriaByTitle(item.titulo);
+  const categoriaField = categoriaPreClassificada
+    ? "" // omitido — preenchido determinsticamente depois
+    : `\n  "categoria": "guerra" | "queda-acoes" | "ma-corporativo" | "macro" | "setor" | "outro",`;
 
   const userPrompt = `MODO DE OUTPUT: JSON estruturado (analise por noticia individual).
 
@@ -134,8 +187,7 @@ Aplique o reasoning_chain do system prompt (passos 1-6) e as transmission_chains
       "emCarteira": true | false
     }
   ],
-  "acaoSugerida": "uma frase concreta coerente com o perfil — ou 'Sem acao imediata recomendada.'",
-  "categoria": "guerra" | "queda-acoes" | "ma-corporativo" | "macro" | "setor" | "outro",
+  "acaoSugerida": "uma frase concreta coerente com o perfil — ou 'Sem acao imediata recomendada.'",${categoriaField}
   "fontes": ["${item.link}", "Yahoo Finance", "..."]
 }
 
@@ -187,6 +239,13 @@ ${JSON_ONLY_SUFFIX}`;
   if (raw.endsWith("```")) raw = raw.slice(0, -3);
   raw = raw.trim();
 
+  // Telemetria: registra a chamada (system + user prompts in; resposta out).
+  recordCall(
+    "news_feed",
+    estimateTokens(PRAXIA_SYSTEM_PROMPT) + estimateTokens(userPrompt),
+    estimateTokens(raw)
+  );
+
   const parsed = JSON.parse(raw) as Partial<AnaliseNoticiaIA>;
 
   // Defesas mínimas — IA pode quebrar contrato
@@ -213,13 +272,16 @@ ${JSON_ONLY_SUFFIX}`;
         ? parsed.acaoSugerida
         : "Sem ação imediata recomendada.",
     categoria:
-      parsed.categoria === "guerra" ||
+      // Classifier deterministico vence — se classificou, evitou ate gastar
+      // tokens no schema da IA acima.
+      categoriaPreClassificada ??
+      (parsed.categoria === "guerra" ||
       parsed.categoria === "queda-acoes" ||
       parsed.categoria === "ma-corporativo" ||
       parsed.categoria === "macro" ||
       parsed.categoria === "setor"
         ? parsed.categoria
-        : "outro",
+        : "outro"),
     fontes: Array.isArray(parsed.fontes) ? parsed.fontes.filter((f) => typeof f === "string") : [],
   };
 

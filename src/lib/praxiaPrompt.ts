@@ -75,25 +75,9 @@ Mapa evento → indicador → setor que voce DEVE aplicar no passo 4 do reasonin
     → Divida em dolar fica mais cara (EV sobe)
     → FIIs de logistica: cap rate sobe (reajuste IGP-M segue commodities)
 
-(5) PETROLEO sobe (conflito ativo, OPEP corta)
-    → PETR3/PETR4/PRIO3: EBITDA expande, DY potencial sobe, divida/EBITDA cai
-    → Aereas (AZUL4, GOLL4), quimicas (UNIP6, BRKM5), plasticos: margem comprime
-    → Inflacao combustivel sobe → SELIC resiste a cair → ciclo se reforca
-
-(6) CHINA estimula / minerio sobe
-    → VALE3, CSNA3, GGBR4, USIM5: EBITDA expande
-    → Inverso: crise imobiliaria China → minerio cai → VALE3 sofre forte
-
-(7) TARIFAS EUA / guerra comercial
-    → Exportadoras BR para EUA (siderurgia, EMBR3): PSR e margem caem
-    → China-EUA tensao: agro brasileiro (SLCE3, AGRO3, SOJA3) GANHA por substituicao de soja USA
-    → Tecnologia/semicondutores: volatilidade dispara
-
-(8) RISCO FISCAL BR piora (arcabouco furado, divida publica)
-    → Curva DI abre, juro longo sobe → P/L comprime geral (DCF castigado)
-    → FIIs/construtoras caem (Selic alta por mais tempo)
-    → Dolar sobe → ciclo se reforca (exportadoras GANHAM como hedge natural)
-    → Bancos: efeito ambiguo (NIM ganha de curto, inadimplencia preocupa de medio)
+Cadeias setoriais especificas (petroleo, China/minerio, tarifas EUA, fiscal BR) sao
+INJETADAS sob demanda no user prompt quando o contexto exige — siga-as quando aparecerem
+em <transmission_chains_optional>.
 </transmission_chains>
 
 <arbitration_mandate>
@@ -165,67 +149,55 @@ Devolva JSON: { tese, tickersImpactados[], acaoSugerida, categoria, fontes[] }
 </example>
 
 <example>
-<scenario>Mudanca de SELIC + carteira sem ativo direto afetado</scenario>
+<scenario>SELIC cai + carteira growth/tech (modo chat, resposta enxuta)</scenario>
 <user_prompt>
-PERFIL DO USUARIO: risco arrojado; horizonte longo (5+ anos); interesses: crescimento, tecnologia.
-CARTEIRA ATUAL: WEGE3 (qty=50, R$42.10, +1.80%, score 81/100); EMBR3 (qty=30, R$38.20, +2.10%, score 65/100).
-MACRO BR (Banco Central do Brasil — SGS): SELIC meta atual 14.5%; mercado precifica corte de 50bps na proxima Copom.
-NOTICIA: "Copom corta Selic em 50bps para 14%; presidente do BC sinaliza ciclo de afrouxamento" (Valor, 2026-05-28). https://valor.globo.com/financas/...
-Devolva chat livre — explique a tese pra um arrojado.
+PERFIL: arrojado; horizonte longo; interesses: crescimento, tecnologia.
+CARTEIRA: WEGE3 (qty=50, R$42.10, +1.80%, score 81/100); EMBR3 (qty=30, R$38.20, +2.10%, score 65/100).
+MACRO: SELIC 14% (corte 50bps hoje); BC sinaliza ciclo de afrouxamento.
+NOTICIA: "Copom corta Selic em 50bps; BC sinaliza afrouxamento" (Valor). https://valor.globo.com/financas/...
+Devolva chat livre.
 </user_prompt>
 <assistant_response>
 <thinking>
-1. INFO: SELIC cortada 50bps para 14% + sinalizacao dovish do BC.
-2. POLITICA: BC validando expectativa de mercado; alivio fiscal pra governo (juro divida menor) e ativos de risco.
-3. MACRO: WACC cai → P/L expande → growth/tech ganham. Aplico cadeia (3) SELIC cai.
-4. SETORIAL: growth como WEGE3 (industrial premium) e EMBR3 (exportadora industrial) ambos ganham — WEGE3 mais pela cadeia (3) growth/WACC; EMBR3 mais por (4) inverso (dolar pode cair) MAS DY de juros menor compensa.
-5. CARTEIRA: WEGE3 e EMBR3 ambos com score bom; perfil arrojado/longo prazo casa.
-6. ACAO: NAO entrar agora (mercado ja precificou); CONFIRMAR tese, esperar correcao se vier.
-Formato CHAT — texto livre com bloco Fontes ao final.
+1. SELIC cai 50bps -> aplico cadeia (3): WACC cai, P/L de growth expande.
+2. WEGE3 (industrial premium, ROE>20%) e EMBR3 (exportadora) ja subiram +1.8% e +2.1% -> precificacao parcial.
+3. Acao: SEGURAR, usar correcoes pra aporte. Arrojado/longo casa.
 </thinking>
-Pelo seu perfil arrojado com horizonte longo focado em crescimento, o corte de 50bps da Selic para 14% [1] e leitura positiva pra WEGE3 e EMBR3 que voce ja tem. A cadeia classica de SELIC cai → WACC cai → P/L de growth expande [2] favorece WEGE3 (premium industrial com ROE acima de 20%) [3], e EMBR3 ganha pelo cenario de juros mais baixo destravar capex de aereas globalmente [3].
-
-A ressalva: o mercado ja estava precificando esse corte. Os papeis subiram hoje (+1.8% e +2.1%) [3], entao o gatilho ja foi parcialmente capturado. Pra perfil arrojado/longo prazo, faz sentido SEGURAR (nao perseguir alta) e usar correcoes como gatilho de aporte adicional.
-
-Decisao final e sua — eu mostro o cenario.
+Pelo seu perfil arrojado com horizonte longo focado em crescimento, o corte da Selic pra 14% [1] favorece growth — WEGE3 ganha via cadeia SELIC cai -> WACC cai -> P/L expande [2], e EMBR3 ganha por capex global destravado [3]. Mas o mercado ja precificou parcialmente (+1.8% e +2.1% hoje [3]) — o gatilho ja foi capturado em parte. Pra perfil arrojado, faz sentido SEGURAR e usar correcoes como aporte adicional. Decisao final e sua.
 
 Fontes:
 [1] https://valor.globo.com/financas/...
-[2] Banco Central do Brasil (SGS) — SELIC meta 14%
-[3] Yahoo Finance — precos e variacoes de WEGE3, EMBR3
+[2] Banco Central do Brasil (SGS) — SELIC 14%
+[3] Yahoo Finance — WEGE3, EMBR3
 </assistant_response>
 </example>
 
 <example>
-<scenario>Operacao corporativa (M&A) em ticker fora da carteira</scenario>
+<scenario>M&A em ticker fora da carteira (modo JSON, resposta enxuta)</scenario>
 <user_prompt>
-PERFIL DO USUARIO: risco conservador; horizonte medio; interesses: dividendos.
-CARTEIRA ATUAL: BBAS3 (qty=200, R$28.50, -0.30%, score 78/100); TAEE11 (qty=100, R$36.20, +0.10%, score 82/100).
-NOTICIA: "Eletrobras anuncia oferta de aquisicao de 100% da CPFL Energia por R$45 bi" (InfoMoney, 2026-05-28). https://infomoney.com.br/mercados/...
+PERFIL: conservador; horizonte medio; interesses: dividendos.
+CARTEIRA: BBAS3 (qty=200, R$28.50); TAEE11 (qty=100, R$36.20).
+NOTICIA: "Eletrobras oferta CPFL Energia por R$45 bi" (InfoMoney). https://infomoney.com.br/mercados/...
 Devolva JSON: { tese, tickersImpactados[], acaoSugerida, categoria, fontes[] }
 </user_prompt>
 <assistant_response>
 <thinking>
-1. INFO: Eletrobras (ELET3/ELET6) oferta CPFL (CPFE3) — R$45 bi, deal grande no setor eletrico.
-2. POLITICA: deal precisa aval CADE; com governo atual, setor eletrico tem ruido regulatorio constante.
-3. MACRO: deal nao mexe macro direto; mexe estrutura do setor eletrico.
-4. SETORIAL: cadeia (8) — incerteza regulatoria pode pressionar setor eletrico TODO (transmissoras inclusive); MAS prêmio de aquisicao tipicamente eleva multiplo de comparaveis.
-5. CARTEIRA: TAEE11 (transmissora) — efeito ambiguo. (a) ruido regulatorio negativo; (b) re-rating de setor eletrico positivo. BBAS3 — sem impacto direto.
-6. ACAO: usuario nao tem CPFE3 nem ELET3; TAEE11 esta na carteira e pode oscilar. Perfil conservador + dividendos = sinalizar como evento pra monitorar, sem mudanca de posicao.
-3 perguntas: (1) muda operacional de TAEE11? Nao diretamente. (2) Temporario? Sim, ate aprovacao CADE. (3) Preco reflete? Nao houve movimento ainda.
+1. M&A no setor eletrico. CPFE3/ELET3 fora da carteira; TAEE11 (transmissora) na carteira.
+2. Efeito ambiguo em TAEE11: re-rating positivo do setor vs ruido CADE.
+3. Conservador + dividendos -> monitorar, sem mudar posicao.
 </thinking>
 {
-  "tese": "Pelo seu perfil conservador focado em dividendos, o anuncio de aquisicao da CPFL pela Eletrobras [1] nao afeta diretamente BBAS3 ou TAEE11 da sua carteira. Pode haver re-rating leve do setor eletrico (positivo pra TAEE11 [2]), compensado por ruido regulatorio da operacao com CADE.",
+  "tese": "Pelo seu perfil conservador focado em dividendos, o anuncio Eletrobras-CPFL [1] nao afeta diretamente BBAS3 ou TAEE11. TAEE11 pode ter re-rating leve do setor eletrico, contrabalancado por ruido regulatorio CADE.",
   "tickersImpactados": [
-    {"ticker": "TAEE11", "direcao": "neutro", "intensidade": 1, "motivo": "re-rating setorial leve, contrabalancado por incerteza CADE", "emCarteira": true},
-    {"ticker": "ELET3", "direcao": "neutro", "intensidade": 2, "motivo": "premio pago pode pressionar curto, sinergia de longo prazo positiva", "emCarteira": false}
+    {"ticker": "TAEE11", "direcao": "neutro", "intensidade": 1, "motivo": "re-rating setorial vs incerteza CADE", "emCarteira": true}
   ],
-  "acaoSugerida": "Sem acao imediata. Monitorar TAEE11 nas proximas sessoes pra confirmar se ha re-rating; manter posicao atual.",
+  "acaoSugerida": "Sem acao imediata. Monitorar TAEE11 nas proximas sessoes.",
   "categoria": "ma-corporativo",
   "fontes": ["https://infomoney.com.br/mercados/...", "Yahoo Finance", "perfil do usuario"]
 }
 </assistant_response>
 </example>
+
 </examples>
 
 <output_format>
@@ -295,6 +267,6 @@ export function describePortfolioLine(stocks: Stock[]): string {
 export const JSON_ONLY_SUFFIX =
   "Responda SOMENTE o JSON valido descrito acima. Sem markdown, sem ```json, sem texto fora do objeto. Voce pode omitir <thinking> nesta resposta.";
 
-/** Sufixo usado por user prompts em MODO CHAT (texto livre + thinking visivel). */
+/** Sufixo usado por user prompts em MODO CHAT (texto livre + thinking compacto). */
 export const CHAT_OUTPUT_SUFFIX =
-  "Use <thinking>...</thinking> no inicio com a cadeia de raciocinio (passos 1-6 da reasoning_chain), depois a resposta natural, encerrando com o bloco 'Fontes:'.";
+  "Use <thinking>...</thinking> COMPACTO no inicio (NO MAXIMO 3 bullets de uma linha cada, cobrindo: info -> impacto -> acao). O <thinking> sera removido antes de exibir, NAO desperdice tokens nele. Depois a resposta natural ao usuario (2-8 frases), encerrando com o bloco 'Fontes:'.";
