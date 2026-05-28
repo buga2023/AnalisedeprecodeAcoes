@@ -36,6 +36,9 @@ const ScreenCompare = lazy(() =>
 const ScreenNews = lazy(() =>
   import("@/components/praxia/screens/ScreenNews").then((m) => ({ default: m.ScreenNews }))
 );
+const ScreenAnalysis = lazy(() =>
+  import("@/components/praxia/screens/ScreenAnalysis").then((m) => ({ default: m.ScreenAnalysis }))
+);
 const ChatSheet = lazy(() =>
   import("@/components/praxia/ChatSheet").then((m) => ({ default: m.ChatSheet }))
 );
@@ -56,7 +59,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news";
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news";
 
 function ScreenFallback() {
   return (
@@ -224,7 +227,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     );
   }
 
-  const showNav = ["home", "market", "activity", "profile"].includes(screen);
+  const showNav = ["home", "market", "analysis", "profile"].includes(screen);
   const showFab = showNav;
 
   return (
@@ -260,7 +263,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onOpenStock={(s) => setQuickWatch(s)}
           onSeeAllHoldings={() => setScreen("market")}
           onAddStock={() => setScreen("market")}
-          onOpenInsights={() => setInsightsOpen(true)}
+          onOpenInsights={() => setScreen("analysis")}
           onOpenProfile={() => setScreen("profile")}
           onOpenChat={() => setChatOpen(true)}
           onOpenAlerts={() => setScreen("alerts")}
@@ -301,6 +304,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             setBootScreen("quiz");
           }}
           onOpenBatchValuation={() => setScreen("batch")}
+          onOpenActivity={() => setScreen("activity")}
           onLogout={onLogout}
           onClearLocalData={clearAllLocal}
         />
@@ -346,6 +350,20 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           />
         )}
 
+        {screen === "analysis" && (
+          <ScreenAnalysis
+            accent={accent}
+            stocks={stocks}
+            profile={profile}
+            activeAlertCount={activeAlerts.length}
+            onBack={() => setScreen("home")}
+            onAddStock={() => setScreen("market")}
+            onOpenStock={openStock}
+            onOpenAlerts={() => setScreen("alerts")}
+            onOpenCompare={(ticker) => addToCompareAndOpen(ticker)}
+          />
+        )}
+
         {screen === "stock" && activeStock && (
           <ScreenStockDetail
             accent={accent}
@@ -360,6 +378,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             onCreateAlert={(s) => setAlertSheetStock(s)}
             onCompare={(ticker) => addToCompareAndOpen(ticker)}
             isInCompareList={compareTickers.includes(activeStock.ticker)}
+            onOpenBatch={() => setScreen("batch")}
           />
         )}
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { PraxiaTokens, ACCENT_OPTIONS } from "../tokens";
 import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
@@ -23,6 +24,7 @@ interface ScreenProfileProps {
   onProviderSave: (config: AIProviderConfig | null) => void;
   onRetakeQuiz: () => void;
   onOpenBatchValuation?: () => void;
+  onOpenActivity?: () => void;
   onLogout: () => void;
   onClearLocalData: () => void;
 }
@@ -38,6 +40,7 @@ export function ScreenProfile({
   onProviderSave,
   onRetakeQuiz,
   onOpenBatchValuation,
+  onOpenActivity,
   onLogout,
   onClearLocalData,
 }: ScreenProfileProps) {
@@ -261,32 +264,21 @@ export function ScreenProfile({
         </PraxiaCard>
 
         {/* Ferramentas */}
-        {onOpenBatchValuation && (
+        {(onOpenBatchValuation || onOpenActivity) && (
           <PraxiaCard padding={16}>
             <SettingLabel label="Ferramentas" sub="Análises avançadas e importação" />
-            <button
-              onClick={onOpenBatchValuation}
-              style={{
-                marginTop: 12,
-                width: "100%",
-                height: 44,
-                borderRadius: 10,
-                background: `${accent}1f`,
-                color: T.ink,
-                border: `0.5px solid ${accent}55`,
-                fontFamily: T.body,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Icon.invest size={14} color={accent} />
-              Valuation em lote (CSV/XLSX)
-            </button>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {onOpenBatchValuation && (
+                <ToolButton accent={accent} onClick={onOpenBatchValuation} icon={<Icon.invest size={14} color={accent} />}>
+                  Valuation em lote (CSV/XLSX)
+                </ToolButton>
+              )}
+              {onOpenActivity && (
+                <ToolButton accent={accent} onClick={onOpenActivity} icon={<Icon.activity size={14} color={accent} />}>
+                  Histórico de transações
+                </ToolButton>
+              )}
+            </div>
           </PraxiaCard>
         )}
 
@@ -354,6 +346,44 @@ export function ScreenProfile({
         </div>
       </div>
     </div>
+  );
+}
+
+function ToolButton({
+  accent,
+  onClick,
+  icon,
+  children,
+}: {
+  accent: string;
+  onClick: () => void;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  const T = PraxiaTokens;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        height: 44,
+        borderRadius: 10,
+        background: `${accent}1f`,
+        color: T.ink,
+        border: `0.5px solid ${accent}55`,
+        fontFamily: T.body,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+      }}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
 

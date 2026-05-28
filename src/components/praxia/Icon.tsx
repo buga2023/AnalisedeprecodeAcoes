@@ -189,5 +189,17 @@ export const Icon = {
       <path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
     </svg>
   ),
+  upload: (p: IconProps = {}) => (
+    <svg {...base(p)}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M17 8l-5-5-5 5M12 3v12" />
+    </svg>
+  ),
+  tableRows: (p: IconProps = {}) => (
+    <svg {...base(p)}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M3 14h18" />
+    </svg>
+  ),
 };
 

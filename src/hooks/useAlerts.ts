@@ -39,7 +39,7 @@ function matches(alert: PriceAlert, stock: Stock): boolean {
     case "graham-margin": {
       const graham = calculateGrahamValue(stock.lpa, stock.vpa);
       if (graham <= 0) return false;
-      const margin = calculateMarginOfSafety(stock.price, graham) * 100;
+      const margin = calculateMarginOfSafety(stock.price, graham);
       return margin >= alert.value;
     }
     case "change-drop":
@@ -57,7 +57,7 @@ function describeFiring(alert: PriceAlert, stock: Stock): string {
       return `${stock.ticker} caiu para R$ ${stock.price.toFixed(2)} (alvo R$ ${alert.value.toFixed(2)})`;
     case "graham-margin": {
       const graham = calculateGrahamValue(stock.lpa, stock.vpa);
-      const margin = graham > 0 ? calculateMarginOfSafety(stock.price, graham) * 100 : 0;
+      const margin = graham > 0 ? calculateMarginOfSafety(stock.price, graham) : 0;
       return `${stock.ticker} com margem Graham ${margin.toFixed(1)}% (alvo ${alert.value.toFixed(0)}%)`;
     }
     case "change-drop":

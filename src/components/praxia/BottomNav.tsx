@@ -1,7 +1,7 @@
 import { PraxiaTokens } from "./tokens";
 import { Icon } from "./Icon";
 
-export type NavTab = "home" | "market" | "activity" | "profile";
+export type NavTab = "home" | "market" | "analysis" | "profile";
 
 interface BottomNavProps {
   tab: NavTab;
@@ -13,8 +13,8 @@ const ITEMS: { k: NavTab; lbl: string; render: (c: string) => React.ReactNode }[
   { k: "home", lbl: "Início", render: (c) => <Icon.home color={c} size={18} /> },
   { k: "market", lbl: "Mercado", render: (c) => <Icon.market color={c} size={18} /> },
   {
-    k: "activity",
-    lbl: "Atividade",
+    k: "analysis",
+    lbl: "Análise",
     render: (c) => <Icon.activity color={c} size={18} />,
   },
   { k: "profile", lbl: "Perfil", render: (c) => <Icon.profile color={c} size={18} /> },

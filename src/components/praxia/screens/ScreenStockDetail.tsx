@@ -13,7 +13,7 @@ import {
   type HistoricalDataPoint,
   type HistoryRange,
 } from "@/lib/api";
-import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators";
+import { calculateGrahamValue, calculateMarginOfSafety, calculateBazinCeiling, calculateGrahamGrowth } from "@/lib/calculators";
 import { StockAIAnalysisSection } from "../StockAIAnalysisSection";
 import { StockReportsSection } from "../StockReportsSection";
 import { AIBadge } from "../AIBadge";
@@ -31,6 +31,7 @@ interface ScreenStockDetailProps {
   onCreateAlert?: (stock: Stock) => void;
   onCompare?: (ticker: string) => void;
   isInCompareList?: boolean;
+  onOpenBatch?: () => void;
 }
 
 type RangeUI = "1D" | "5D" | "6M";
@@ -54,6 +55,7 @@ export function ScreenStockDetail({
   onCreateAlert,
   onCompare,
   isInCompareList = false,
+  onOpenBatch,
 }: ScreenStockDetailProps) {
   const T = PraxiaTokens;
   const [range, setRange] = useState<RangeUI>("6M");
@@ -123,6 +125,10 @@ export function ScreenStockDetail({
   const positive = stock.changePercent >= 0;
   const grahamValue = stock.grahamValue ?? calculateGrahamValue(stock.lpa, stock.vpa);
   const margin = stock.marginOfSafety ?? calculateMarginOfSafety(stock.price, grahamValue);
+  const dpa = stock.dividendYield > 0 ? stock.dividendYield * stock.price : null;
+  const bazinCeiling = calculateBazinCeiling(dpa);
+  const grahamGrowth = calculateGrahamGrowth(stock.lpa > 0 ? stock.lpa : null);
+  const roicPct = stock.roic ? stock.roic * 100 : null;
   const risk = profile?.risk ?? "mid";
 
   const praMessage = (() => {
@@ -550,6 +556,206 @@ export function ScreenStockDetail({
           })()}
         </div>
 
+        {/* ── Valuation — Como calculamos ──────────────────────────── */}
+        <PraxiaCard
+          padding={16}
+          style={{ marginTop: 16, border: `0.5px solid ${T.hairlineStrong}` }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: T.displaySC,
+                fontSize: 11,
+                color: T.ink50,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+              }}
+            >
+              Valuation — Como calculamos
+            </div>
+            <div
+              style={{
+                fontFamily: T.mono,
+                fontSize: 9,
+                color: T.ink30,
+                letterSpacing: 0.6,
+              }}
+            >
+              CÁLCULO DO APP
+            </div>
+          </div>
+
+          {/* grade 2 colunas */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <ValuationCell
+              label="Graham VI"
+              value={grahamValue > 0 ? fmt.brl(grahamValue) : "—"}
+              formula="√(22,5 × LPA × VPA)"
+              tooltip="Valor intrínseco de Graham: raiz quadrada de 22,5 vezes o lucro por ação vezes o valor patrimonial por ação."
+              color={grahamValue > 0 && stock.price < grahamValue ? T.up : T.down}
+            />
+            <ValuationCell
+              label="Teto Bazin"
+              value={bazinCeiling != null ? fmt.brl(bazinCeiling) : "—"}
+              formula="DPA ÷ 0,06"
+              tooltip="Preço máximo a pagar para ter yield mínimo de 6% ao ano. Dividendo por ação dividido por 0,06."
+              color={bazinCeiling != null && stock.price < bazinCeiling ? T.up : T.ink50}
+            />
+            <ValuationCell
+              label="Graham c/ Crescimento"
+              value={grahamGrowth != null ? fmt.brl(grahamGrowth) : "—"}
+              formula="LPA × (8,5 + 2×7)"
+              tooltip="Versão do Graham considerando crescimento conservador de 7% ao ano. LPA multiplicado por (8,5 + 2 vezes a taxa de crescimento)."
+              color={grahamGrowth != null && stock.price < grahamGrowth ? T.up : T.ink50}
+            />
+            <ValuationCell
+              label="Margem de Segurança"
+              value={grahamValue > 0 ? `${margin.toFixed(1)}%` : "—"}
+              formula="(VI − preço) ÷ VI"
+              tooltip="Desconto percentual do preço atual em relação ao valor intrínseco de Graham. Positivo = comprado com desconto."
+              color={margin > 20 ? T.up : margin > 0 ? T.warn : T.down}
+            />
+            <ValuationCell
+              label="ROIC"
+              value={roicPct != null && roicPct !== 0 ? `${roicPct.toFixed(1)}%` : "—"}
+              formula="NOPAT ÷ Capital"
+              tooltip="Retorno sobre o capital investido. EBIT líquido de impostos dividido pelo capital total (dívida + patrimônio). Quanto a empresa gera para cada R$ investido."
+              color={roicPct != null && roicPct > 10 ? T.up : T.ink50}
+            />
+            <ValuationCell
+              label="Preço vs. Graham"
+              value={
+                grahamValue > 0
+                  ? margin >= 0
+                    ? `−${margin.toFixed(1)}% do teto`
+                    : `+${Math.abs(margin).toFixed(1)}% acima`
+                  : "—"
+              }
+              formula="comparação direta"
+              tooltip="Se positivo, o preço está abaixo do valor justo de Graham (oportunidade). Se negativo, está acima (sobrepreço)."
+              color={margin > 0 ? T.up : T.down}
+            />
+          </div>
+
+          {/* ── Score breakdown ────────────────────────────────────── */}
+          <div
+            style={{
+              marginTop: 14,
+              paddingTop: 12,
+              borderTop: `0.5px dashed ${T.hairline}`,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 8,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: T.displaySC,
+                  fontSize: 11,
+                  color: T.ink50,
+                  letterSpacing: 1.2,
+                }}
+              >
+                Score
+              </div>
+              <div
+                style={{
+                  fontFamily: T.mono,
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color:
+                    stock.score >= 70 ? T.up : stock.score >= 40 ? T.warn : T.down,
+                  letterSpacing: -0.3,
+                }}
+              >
+                {stock.score}
+                <span
+                  style={{ fontSize: 10, color: T.ink50, fontWeight: 400, marginLeft: 1 }}
+                >
+                  /100
+                </span>
+              </div>
+            </div>
+            <ScoreDimBar
+              label="Graham (preço)"
+              pts={stock.scoreBreakdown.priceScore}
+              max={25}
+              detail={
+                grahamValue > 0
+                  ? `preço ${stock.price < grahamValue ? "abaixo" : "acima"} do VI R$ ${grahamValue.toFixed(0)}`
+                  : "VI indisponível"
+              }
+              accent={accent}
+            />
+            <ScoreDimBar
+              label="Rentabilidade"
+              pts={stock.scoreBreakdown.profitabilityScore}
+              max={20}
+              detail={`ROE ${stock.roe > 0 ? (stock.roe * 100).toFixed(1) + "%" : "N/D"} — máx. em >20%`}
+              accent={accent}
+            />
+            <ScoreDimBar
+              label="Saúde financeira"
+              pts={stock.scoreBreakdown.healthScore}
+              max={20}
+              detail={`Dívida/EBITDA ${stock.debtToEbitda > 0 ? stock.debtToEbitda.toFixed(1) + "x" : "N/D"} — máx. em <1,5x`}
+              accent={accent}
+            />
+            <ScoreDimBar
+              label="Dividend Yield"
+              pts={stock.scoreBreakdown.dividendScore}
+              max={20}
+              detail={`DY ${stock.dividendYield > 0 ? (stock.dividendYield * 100).toFixed(1) + "%" : "N/D"} — máx. em >6%`}
+              accent={accent}
+            />
+            <ScoreDimBar
+              label="Valuation (P/L + EV/EBITDA)"
+              pts={stock.scoreBreakdown.valuationScore}
+              max={15}
+              detail={`P/L ${stock.pl > 0 ? stock.pl.toFixed(1) + "x" : "N/D"} · EV/EBITDA ${stock.evEbitda > 0 ? stock.evEbitda.toFixed(1) + "x" : "N/D"}`}
+              accent={accent}
+            />
+          </div>
+
+          {/* CTA Batch Valuation */}
+          {onOpenBatch && (
+            <button
+              onClick={onOpenBatch}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                height: 38,
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.04)",
+                border: `0.5px solid ${T.hairlineStrong}`,
+                color: T.ink70,
+                fontFamily: T.body,
+                fontSize: 12,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              <Icon.upload size={13} color={T.ink50} />
+              Calcule em lote — importe sua planilha
+            </button>
+          )}
+        </PraxiaCard>
+
         <StockAIAnalysisSection stock={stock} profile={profile} accent={accent} />
 
         <StockReportsSection ticker={stock.ticker} currentPrice={stock.price} />
@@ -619,6 +825,135 @@ export function ScreenStockDetail({
         >
           Comprar
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ValuationCell({
+  label,
+  value,
+  formula,
+  tooltip,
+  color,
+}: {
+  label: string;
+  value: string;
+  formula: string;
+  tooltip: string;
+  color?: string;
+}) {
+  const T = PraxiaTokens;
+  return (
+    <PraxiaCard padding={10} style={{ position: "relative" }}>
+      <div
+        style={{
+          fontFamily: T.body,
+          fontSize: 10,
+          color: T.ink50,
+          fontWeight: 500,
+          letterSpacing: 0.1,
+          marginBottom: 4,
+        }}
+        title={tooltip}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: T.mono,
+          fontSize: 15,
+          fontWeight: 600,
+          color: color ?? T.ink,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          marginTop: 4,
+          fontFamily: T.mono,
+          fontSize: 8.5,
+          color: T.ink30,
+          letterSpacing: 0.3,
+        }}
+      >
+        {formula}
+      </div>
+    </PraxiaCard>
+  );
+}
+
+function ScoreDimBar({
+  label,
+  pts,
+  max,
+  detail,
+  accent,
+}: {
+  label: string;
+  pts: number;
+  max: number;
+  detail: string;
+  accent: string;
+}) {
+  const T = PraxiaTokens;
+  const pct = max > 0 ? Math.round((pts / max) * 100) : 0;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 3,
+        }}
+      >
+        <div
+          style={{ fontFamily: T.body, fontSize: 11, color: T.ink70, fontWeight: 500 }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontFamily: T.mono,
+            fontSize: 10,
+            color: pts === max ? T.up : pts > 0 ? T.warn : T.ink30,
+            fontWeight: 600,
+          }}
+        >
+          {pts}/{max} pts
+        </div>
+      </div>
+      <div
+        style={{
+          height: 4,
+          borderRadius: 3,
+          background: T.hairline,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            borderRadius: 3,
+            background: pts === max ? T.up : pts > 0 ? accent : T.down,
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+      <div
+        style={{
+          marginTop: 2,
+          fontFamily: T.mono,
+          fontSize: 9,
+          color: T.ink30,
+          letterSpacing: 0.2,
+        }}
+      >
+        {detail}
       </div>
     </div>
   );
