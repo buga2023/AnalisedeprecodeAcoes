@@ -1,62 +1,13 @@
 @import "tailwindcss";
 
-@plugin "tailwindcss-animate";
-
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-up: var(--up);
-  --color-down: var(--down);
-  --color-warn: var(--warn);
-}
-
+/*
+  Praxia v0 — Engraved palette (onyx + vellum + champagne gold).
+  Only the variables actually referenced below are kept; everything else
+  is inlined via PraxiaTokens (src/components/praxia/tokens.ts).
+*/
 :root {
-  --radius: 1rem;
-
-  /* Praxia v0 — Engraved palette (onyx + vellum + champagne gold) */
-  --background: #0a0a10;
   --bg-deep: #06060a;
   --foreground: #f4ecdf;
-  --card: #13110d;
-  --card-foreground: #f4ecdf;
-  --surface-2: #1a1610;
-
-  --primary: #c8a25c;
-  --primary-foreground: #1a1610;
-  --secondary: #1a1610;
-  --secondary-foreground: #f4ecdf;
-  --muted: #1a1610;
-  --muted-foreground: rgba(244, 236, 223, 0.52);
-  --accent: #c8a25c;
-  --accent-foreground: #1a1610;
-  --destructive: #c87371;
-  --border: rgba(244, 236, 223, 0.10);
-
-  /* semantic — mais sóbrio que o navy stack */
-  --up: #7fb796;
-  --down: #c87371;
-  --warn: #c8a25c;
-  --gold: #c8a25c;
   --gold-dim: rgba(200, 162, 92, 0.55);
 }
 

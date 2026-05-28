@@ -89,9 +89,9 @@ export async function fetchTickerNews(ticker: string, limit = 6): Promise<NewsBu
   }
 }
 
-export type NewsTopic = "brasil" | "politica" | "economia" | "mundo" | "crise" | "fiscal";
+export type NewsTopic = "brasil" | "politica" | "economia" | "mundo" | "crise" | "fiscal" | "regulatorio";
 
-/** Notícias por tema (brasil | politica | economia | mundo | crise | fiscal). */
+/** Notícias por tema (brasil | politica | economia | mundo | crise | fiscal | regulatorio). */
 export async function fetchTopicNews(topic: NewsTopic, limit = 6): Promise<NewsBundle> {
   const key = `topic:${topic}:${limit}`;
   const cached = newsCache.get(key);
@@ -109,6 +109,27 @@ export async function fetchTopicNews(topic: NewsTopic, limit = 6): Promise<NewsB
 }
 
 /**
+ * Fato relevante / comunicado ao mercado de uma empresa via Google News RSS.
+ * Não substitui consulta direta ao IPE/CVM, mas pega a manchete em ~10-30min
+ * sem nova dependência e sem download de ZIP.
+ */
+export async function fetchRegulatoryNews(ticker: string, limit = 5): Promise<NewsBundle> {
+  const key = `regulatory:${ticker.toUpperCase()}:${limit}`;
+  const cached = newsCache.get(key);
+  if (cached && Date.now() - cached.at < NEWS_CACHE_TTL_MS) return cached.data;
+  try {
+    const url = `/api/news?ticker=${encodeURIComponent(ticker)}&kind=regulatory&limit=${limit}`;
+    const res = await fetch(url);
+    if (!res.ok) return { query: ticker, source: "Google News RSS", items: [] };
+    const data = (await res.json()) as NewsBundle;
+    newsCache.set(key, { at: Date.now(), data });
+    return data;
+  } catch {
+    return { query: ticker, source: "Google News RSS", items: [] };
+  }
+}
+
+/**
  * Notícias globais agregadas pelo /api/world-news (GDELT + Google News
  * multi-país + Reddit + BBC). Refresh a cada 2h via Vercel Cron; cliente
  * cacheia 30min para evitar tráfego desnecessário entre páginas.
@@ -120,14 +141,14 @@ export async function fetchWorldNews(): Promise<WorldNewsContext | null> {
   try {
     const res = await fetch("/api/world-news");
     if (!res.ok) {
-      worldNewsCache = { at: Date.now(), data: null };
-      return null;
+      // Não cacheia erro — próxima chamada tenta de novo.
+      return worldNewsCache?.data ?? null;
     }
     const data = (await res.json()) as WorldNewsContext;
     worldNewsCache = { at: Date.now(), data };
     return data;
   } catch {
-    return null;
+    return worldNewsCache?.data ?? null;
   }
 }
 

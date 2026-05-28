@@ -1,0 +1,252 @@
+import type { InvestorProfile, Stock } from "@/types/stock";
+import type { WorldNewsItem } from "./context";
+import {
+  PRAXIA_SYSTEM_PROMPT,
+  JSON_ONLY_SUFFIX,
+  describeProfileLine,
+  describePortfolioLine,
+} from "./praxiaPrompt";
+
+/**
+ * Análise IA POR NOTÍCIA INDIVIDUAL — cruza a manchete com a carteira do
+ * usuário para responder "como ISSO me afeta". Diferente de `aiNews.ts` que
+ * resume tópicos inteiros, esta função foca em UMA notícia + tickers que o
+ * usuário REALMENTE tem.
+ *
+ * Cache 24h em localStorage por (URL + signature da carteira). Quando a
+ * carteira muda, análises antigas continuam válidas pra mesma URL — só
+ * recalcula se o usuário pedir refresh manual.
+ */
+
+const AI_API_URL = "/api/ai";
+const CACHE_KEY_PREFIX = "praxia-news-feed-analysis:";
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+export interface TickerImpact {
+  ticker: string;
+  direcao: "ganha" | "perde" | "neutro";
+  /** 1 = leve, 2 = relevante, 3 = forte. Usado pra ordenar e colorir chips. */
+  intensidade: 1 | 2 | 3;
+  motivo: string;
+  /** Se o ticker está na carteira do usuário (passado pelo cliente). */
+  emCarteira: boolean;
+}
+
+export interface AnaliseNoticiaIA {
+  /** 2-3 frases começando por "Pelo seu perfil X..." quando há perfil. */
+  tese: string;
+  /** Lista priorizada — primeiro os que estão em carteira, depois sugestões. */
+  tickersImpactados: TickerImpact[];
+  /** "Considere reduzir/aumentar/segurar X, criar alerta em Y..." ou "Sem ação imediata recomendada." */
+  acaoSugerida: string;
+  /** Categoria pra filtro: guerra, queda-acoes, ma, macro, setor, outro. */
+  categoria: "guerra" | "queda-acoes" | "ma-corporativo" | "macro" | "setor" | "outro";
+  /** URLs/rótulos efetivamente citados na tese. */
+  fontes: string[];
+}
+
+interface CacheEntry {
+  savedAt: number;
+  signature: string;
+  payload: AnaliseNoticiaIA;
+}
+
+/** Signature da carteira: tickers ordenados pra ser estável. */
+function portfolioSignature(stocks: Stock[]): string {
+  return stocks
+    .map((s) => s.ticker.toUpperCase())
+    .sort()
+    .join(",");
+}
+
+/** Chave de cache por URL + assinatura. URLs longas viram hash curto. */
+function cacheKeyFor(url: string): string {
+  // djb2 hash — estável, sem dep externa
+  let hash = 5381;
+  for (let i = 0; i < url.length; i++) hash = ((hash << 5) + hash + url.charCodeAt(i)) | 0;
+  return `${CACHE_KEY_PREFIX}${(hash >>> 0).toString(36)}`;
+}
+
+function readCache(url: string, sig: string): AnaliseNoticiaIA | null {
+  try {
+    const raw = localStorage.getItem(cacheKeyFor(url));
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as CacheEntry;
+    if (entry.signature !== sig) return null;
+    if (Date.now() - entry.savedAt > CACHE_TTL_MS) return null;
+    return entry.payload;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(url: string, sig: string, payload: AnaliseNoticiaIA) {
+  try {
+    const entry: CacheEntry = { savedAt: Date.now(), signature: sig, payload };
+    localStorage.setItem(cacheKeyFor(url), JSON.stringify(entry));
+  } catch {
+    /* quota cheia: ignora */
+  }
+}
+
+export function getCachedAnaliseNoticia(
+  item: WorldNewsItem,
+  stocks: Stock[]
+): AnaliseNoticiaIA | null {
+  return readCache(item.link, portfolioSignature(stocks));
+}
+
+/**
+ * Pede à IA uma análise da notícia DIRECIONADA à carteira do usuário.
+ * Resposta é JSON estruturado (response_format quando suportado).
+ */
+export async function analisarNoticiaParaCarteira(
+  item: WorldNewsItem,
+  profile: InvestorProfile | null,
+  stocks: Stock[],
+  topicLabel?: string
+): Promise<AnaliseNoticiaIA> {
+  const sig = portfolioSignature(stocks);
+  const cached = readCache(item.link, sig);
+  if (cached) return cached;
+
+  const userPrompt = `MODO DE OUTPUT: JSON estruturado (analise por noticia individual).
+
+NOTICIA PARA ANALISAR:
+  Manchete: ${item.titulo}
+  Fonte:    ${item.fonte || "(nao informada)"}
+  URL:      ${item.link}
+  Publicado: ${item.publicado || "(sem data)"}
+${item.tom !== undefined ? `  Tom GDELT: ${item.tom.toFixed(2)} (escala -1..1)\n` : ""}${topicLabel ? `  Topico atribuido pelo agregador: ${topicLabel}\n` : ""}
+${describeProfileLine(profile)}
+
+${describePortfolioLine(stocks)}
+
+Aplique o reasoning_chain do system prompt (passos 1-6) e as transmission_chains relevantes. Devolva ESTE JSON:
+{
+  "tese": "2-3 frases em pt-BR comecando por 'Pelo seu perfil [risco], ...'",
+  "tickersImpactados": [
+    {
+      "ticker": "PETR4",
+      "direcao": "ganha" | "perde" | "neutro",
+      "intensidade": 1 | 2 | 3,
+      "motivo": "frase curta com a cadeia de transmissao aplicada",
+      "emCarteira": true | false
+    }
+  ],
+  "acaoSugerida": "uma frase concreta coerente com o perfil — ou 'Sem acao imediata recomendada.'",
+  "categoria": "guerra" | "queda-acoes" | "ma-corporativo" | "macro" | "setor" | "outro",
+  "fontes": ["${item.link}", "Yahoo Finance", "..."]
+}
+
+REGRAS ESPECIFICAS DESTA TASK:
+- Use no maximo 5 tickers no array. Tickers da CARTEIRA tem prioridade (emCarteira: true).
+- Sugestoes fora da carteira: maximo 2, emCarteira: false.
+- INTENSIDADE: 1=leve (impacto indireto), 2=relevante (impacto setorial direto), 3=forte (impacto direto na empresa).
+- Para perfil conservador, prefira acoes como "criar alerta" ou "sem acao imediata".
+- O array "fontes" DEVE incluir a URL da noticia analisada.
+
+${JSON_ONLY_SUFFIX}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  let response: Response;
+  try {
+    response = await fetch(AI_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: PRAXIA_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 900,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("IA demorou demais (timeout 30s). Tente novamente.");
+    }
+    throw e;
+  }
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro IA (${response.status})`);
+  }
+
+  const data = await response.json();
+  let raw = String(data.content ?? "").trim();
+  if (raw.startsWith("```json")) raw = raw.slice(7);
+  if (raw.startsWith("```")) raw = raw.slice(3);
+  if (raw.endsWith("```")) raw = raw.slice(0, -3);
+  raw = raw.trim();
+
+  const parsed = JSON.parse(raw) as Partial<AnaliseNoticiaIA>;
+
+  // Defesas mínimas — IA pode quebrar contrato
+  const normalized: AnaliseNoticiaIA = {
+    tese: typeof parsed.tese === "string" ? parsed.tese : "Análise indisponível.",
+    tickersImpactados: Array.isArray(parsed.tickersImpactados)
+      ? parsed.tickersImpactados
+          .filter((t): t is TickerImpact => !!t && typeof t.ticker === "string")
+          .map((t) => ({
+            ticker: t.ticker.toUpperCase(),
+            direcao:
+              t.direcao === "ganha" || t.direcao === "perde" || t.direcao === "neutro"
+                ? t.direcao
+                : "neutro",
+            intensidade:
+              t.intensidade === 1 || t.intensidade === 2 || t.intensidade === 3 ? t.intensidade : 1,
+            motivo: typeof t.motivo === "string" ? t.motivo : "",
+            emCarteira: !!t.emCarteira,
+          }))
+          .slice(0, 5)
+      : [],
+    acaoSugerida:
+      typeof parsed.acaoSugerida === "string"
+        ? parsed.acaoSugerida
+        : "Sem ação imediata recomendada.",
+    categoria:
+      parsed.categoria === "guerra" ||
+      parsed.categoria === "queda-acoes" ||
+      parsed.categoria === "ma-corporativo" ||
+      parsed.categoria === "macro" ||
+      parsed.categoria === "setor"
+        ? parsed.categoria
+        : "outro",
+    fontes: Array.isArray(parsed.fontes) ? parsed.fontes.filter((f) => typeof f === "string") : [],
+  };
+
+  // Garantia: o link da notícia analisada deve estar nas fontes
+  if (!normalized.fontes.includes(item.link)) normalized.fontes.unshift(item.link);
+
+  // Reforço de "emCarteira" — fonte da verdade é a carteira passada, não a IA
+  const carteiraSet = new Set(stocks.map((s) => s.ticker.toUpperCase()));
+  normalized.tickersImpactados = normalized.tickersImpactados
+    .map((t) => ({ ...t, emCarteira: carteiraSet.has(t.ticker) }))
+    .sort((a, b) => {
+      // Em carteira vem primeiro, depois maior intensidade
+      if (a.emCarteira !== b.emCarteira) return a.emCarteira ? -1 : 1;
+      return b.intensidade - a.intensidade;
+    });
+
+  writeCache(item.link, sig, normalized);
+  return normalized;
+}
+
+export function clearAllNewsFeedAnalysisCache() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_KEY_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore */
+  }
+}

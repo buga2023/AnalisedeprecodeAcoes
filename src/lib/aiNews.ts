@@ -1,5 +1,6 @@
 import type { InvestorProfile } from "@/types/stock";
 import type { WorldNewsTopicBundle } from "./context";
+import { PRAXIA_SYSTEM_PROMPT, JSON_ONLY_SUFFIX } from "./praxiaPrompt";
 
 /**
  * Resumo IA de um bundle de notícias (um tópico) — passa pelo /api/ai como
@@ -103,36 +104,54 @@ export async function resumirNoticiasComIA(
       ? "moderado"
       : "ainda não definido";
 
-  const prompt = `TOPICO: ${bundle.topic.toUpperCase()} — ${bundle.description}
-ANGULO DE ARBITRAGEM JÁ MAPEADO: ${bundle.arbitrageAngle}
+  const userPrompt = `MODO DE OUTPUT: JSON estruturado.
+
+TOPICO: ${bundle.topic.toUpperCase()} — ${bundle.description}
+ANGULO DE ARBITRAGEM JA MAPEADO PELO SERVIDOR: ${bundle.arbitrageAngle}
 
 PERFIL DO USUARIO: ${profilePt}
 
 MANCHETES (use [n] para citar; cada link DEVE entrar em "fontes" se citado):
 ${manchetes}
 
-Devolva SOMENTE este JSON:
+Aplique o reasoning_chain do system prompt e devolva ESTE JSON:
 {
-  "resumo": "2-3 frases em pt-BR começando com 'Pelo seu perfil [risco]...' (use o tom da Pra), com [1], [2]... fazendo match com as manchetes",
-  "impactoArbitragem": "1-2 frases explicando como essas notícias mexem com preço de ativos / setores específicos da B3",
+  "resumo": "2-3 frases em pt-BR comecando com 'Pelo seu perfil [risco]...', com [1], [2]... fazendo match com as manchetes",
+  "impactoArbitragem": "1-2 frases explicando como essas noticias mexem com preco de ativos / setores especificos da B3 (use as transmission_chains)",
   "alvos": [
-    { "alvo": "TICKER ou SETOR", "direcao": "ganha" | "perde" | "neutro", "motivo": "frase curta" }
+    { "alvo": "TICKER ou SETOR", "direcao": "ganha" | "perde" | "neutro", "motivo": "frase curta com cadeia aplicada" }
   ],
-  "fontes": ["URL 1", "URL 2", ...]
+  "fontes": ["URL 1", "URL 2", "..."]
 }
 
-Use no máximo 5 alvos. Se não tiver fonte verificável para alguma afirmação, escreva "(sem fonte verificável)" e não afirme o fato. NUNCA use emojis.`;
+Use no maximo 5 alvos. ${JSON_ONLY_SUFFIX}`;
 
-  const response = await fetch(AI_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
-      max_tokens: 900,
-      response_format: { type: "json_object" },
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  let response: Response;
+  try {
+    response = await fetch(AI_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: PRAXIA_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 900,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("IA demorou demais (timeout 30s). Tente novamente.");
+    }
+    throw e;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

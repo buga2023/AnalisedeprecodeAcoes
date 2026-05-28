@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { InvestorProfile } from "@/types/stock";
 
 const STORAGE_KEY = "praxia-investor-profile";
@@ -13,25 +13,31 @@ function load(): InvestorProfile | null {
   return null;
 }
 
+function persist(p: InvestorProfile | null) {
+  try {
+    if (p) localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* quota / SSR */
+  }
+}
+
 export function useInvestorProfile() {
   const [profile, setProfile] = useState<InvestorProfile | null>(load);
 
-  useEffect(() => {
-    if (profile) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, [profile]);
-
   const saveProfile = useCallback(
     (p: Omit<InvestorProfile, "completedAt">) => {
-      setProfile({ ...p, completedAt: new Date().toISOString() });
+      const next: InvestorProfile = { ...p, completedAt: new Date().toISOString() };
+      persist(next);
+      setProfile(next);
     },
     []
   );
 
-  const reset = useCallback(() => setProfile(null), []);
+  const reset = useCallback(() => {
+    persist(null);
+    setProfile(null);
+  }, []);
 
   return { profile, saveProfile, reset, hasProfile: profile !== null };
 }

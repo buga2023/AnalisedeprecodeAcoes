@@ -6,7 +6,9 @@ import { GlassButton } from "../GlassButton";
 import { Icon } from "../Icon";
 import { PraMark } from "../PraMark";
 import { StatusTag } from "../Tag";
+import { NewsFeedCard } from "../NewsFeedCard";
 import { useWorldNews } from "@/hooks/useWorldNews";
+import { useNewsFeed } from "@/hooks/useNewsFeed";
 import {
   resumirNoticiasComIA,
   getCachedResumoNoticias,
@@ -14,15 +16,21 @@ import {
 } from "@/lib/aiNews";
 import type {
   InvestorProfile,
+  Stock,
 } from "@/types/stock";
 import type {
   WorldNewsItem,
   WorldNewsTopicBundle,
 } from "@/lib/context";
 
+type ViewMode = "topicos" | "feed";
+type FeedFilter = "para-voce" | "todos" | string;
+const PARA_VOCE: FeedFilter = "para-voce";
+
 interface ScreenNewsProps {
   accent?: string;
   profile: InvestorProfile | null;
+  stocks: Stock[];
   onBack: () => void;
 }
 
@@ -32,6 +40,10 @@ const TOPIC_LABEL: Record<string, string> = {
   china: "China",
   commodities: "Commodities",
   "brasil-fiscal": "Brasil · Fiscal",
+  guerra: "Guerra",
+  "mercado-acoes": "Mercado · Ações",
+  regulatorio: "Fato relevante",
+  carteira: "Carteira",
 };
 
 function pubDateRelative(dateString?: string): string {
@@ -59,19 +71,40 @@ function originLabel(origem: WorldNewsItem["origem"]): string {
   }
 }
 
-export function ScreenNews({ accent = PraxiaTokens.accent, profile, onBack }: ScreenNewsProps) {
+export function ScreenNews({ accent = PraxiaTokens.accent, profile, stocks, onBack }: ScreenNewsProps) {
   const T = PraxiaTokens;
-  const { data, isLoading, error, refresh } = useWorldNews();
-  const [activeTopic, setActiveTopic] = useState<string | null>(null);
+  const feed = useNewsFeed(profile, stocks);
+  // useWorldNews continua disponível pra modo Tópicos consumir o mesmo cache.
+  const worldOnly = useWorldNews();
+  const data = feed.worldData ?? worldOnly.data;
+  const isLoading = feed.isLoading || worldOnly.isLoading;
+  const error = feed.error ?? worldOnly.error;
+  const refresh = async (force = false) => {
+    await Promise.all([feed.refresh(force), worldOnly.refresh(force)]);
+  };
 
-  const topics = data?.topics ?? [];
+  const hasCarteira = stocks.length > 0;
+  const [activeTopic, setActiveTopic] = useState<FeedFilter | null>(hasCarteira ? PARA_VOCE : null);
+  const [viewMode, setViewMode] = useState<ViewMode>("feed");
+
+  // B4 fix: memoizar topics pra evitar re-render quando data não mudou.
+  const topics = useMemo(() => data?.topics ?? [], [data]);
   const generated = data ? new Date(data.generatedAt).toLocaleString("pt-BR") : "";
 
-  // Topic filter — null = todos
+  // Topic filter — null = todos; PARA_VOCE só faz sentido no modo feed.
   const visibleTopics = useMemo(() => {
-    if (!activeTopic) return topics;
+    if (!activeTopic || activeTopic === PARA_VOCE) return topics;
     return topics.filter((t) => t.topic === activeTopic);
   }, [topics, activeTopic]);
+
+  // Feed achatado já ranqueado pelo useNewsFeed; aqui só aplica filtro de pill.
+  const feedItems = useMemo(() => {
+    if (activeTopic === PARA_VOCE) return feed.personalItems;
+    if (activeTopic && activeTopic !== PARA_VOCE) {
+      return feed.items.filter((e) => e.topic === activeTopic);
+    }
+    return feed.items;
+  }, [feed.items, feed.personalItems, activeTopic]);
 
   return (
     <div
@@ -119,12 +152,40 @@ export function ScreenNews({ accent = PraxiaTokens.accent, profile, onBack }: Sc
                 marginTop: 2,
               }}
             >
-              Resumidas pela Pra · atualizadas a cada 2h
+              {viewMode === "feed"
+                ? "Feed cronológico · análise IA por notícia"
+                : "Tópicos resumidos pela Pra · atualizados a cada 2h"}
             </div>
           </div>
           <GlassButton onClick={() => refresh(true)} ariaLabel="Atualizar agora">
             <Icon.refresh size={16} color={T.ink70} />
           </GlassButton>
+        </div>
+
+        {/* View mode toggle: Feed | Tópicos */}
+        <div
+          style={{
+            display: "flex",
+            gap: 0,
+            padding: 3,
+            borderRadius: 10,
+            background: "rgba(255,255,255,0.04)",
+            border: `0.5px solid ${T.hairline}`,
+            alignSelf: "stretch",
+          }}
+        >
+          <ModeToggleButton
+            label="Feed personalizado"
+            active={viewMode === "feed"}
+            onClick={() => setViewMode("feed")}
+            accent={accent}
+          />
+          <ModeToggleButton
+            label="Tópicos"
+            active={viewMode === "topicos"}
+            onClick={() => setViewMode("topicos")}
+            accent={accent}
+          />
         </div>
 
         {generated && (
@@ -153,13 +214,31 @@ export function ScreenNews({ accent = PraxiaTokens.accent, profile, onBack }: Sc
             paddingLeft: 4,
           }}
         >
+          {viewMode === "feed" && (
+            <FilterPill
+              label="Para você"
+              active={activeTopic === PARA_VOCE}
+              onClick={() => setActiveTopic(PARA_VOCE)}
+              accent={accent}
+              count={feed.personalItems.length}
+            />
+          )}
           <FilterPill
             label="Todos"
             active={activeTopic === null}
             onClick={() => setActiveTopic(null)}
             accent={accent}
-            count={topics.reduce((acc, t) => acc + t.items.length, 0)}
+            count={viewMode === "feed" ? feed.items.length : topics.reduce((acc, t) => acc + t.items.length, 0)}
           />
+          {viewMode === "feed" && (
+            <FilterPill
+              label="Fato relevante"
+              active={activeTopic === "regulatorio"}
+              onClick={() => setActiveTopic("regulatorio")}
+              accent={accent}
+              count={feed.items.filter((e) => e.topic === "regulatorio").length}
+            />
+          )}
           {topics.map((t) => (
             <FilterPill
               key={t.topic}
@@ -199,27 +278,76 @@ export function ScreenNews({ accent = PraxiaTokens.accent, profile, onBack }: Sc
           </PraxiaCard>
         )}
 
-        {/* Topic cards */}
-        {visibleTopics.map((bundle) => (
-          <TopicCard key={bundle.topic} bundle={bundle} accent={accent} profile={profile} />
-        ))}
-
-        {visibleTopics.length === 0 && !isLoading && !error && (
-          <PraxiaCard padding={20}>
-            <div
-              style={{
-                fontFamily: T.body,
-                fontSize: 13,
-                color: T.ink50,
-                textAlign: "center",
-              }}
-            >
-              Sem notícias neste tópico no momento.
-            </div>
-          </PraxiaCard>
+        {/* Render: Feed personalizado ou Tópicos */}
+        {viewMode === "feed" ? (
+          <>
+            {feedItems.length === 0 && !isLoading && !error && (
+              <PraxiaCard padding={20}>
+                <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink50, textAlign: "center" }}>
+                  Nenhuma notícia disponível no momento.
+                </div>
+              </PraxiaCard>
+            )}
+            {feedItems.map(({ item, topic, topicLabel }) => (
+              <NewsFeedCard
+                key={`${topic}-${item.link}`}
+                item={item}
+                topicLabel={topic === "carteira" ? "Carteira" : TOPIC_LABEL[topic] ?? topicLabel}
+                accent={accent}
+                profile={profile}
+                stocks={stocks}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            {visibleTopics.map((bundle) => (
+              <TopicCard key={bundle.topic} bundle={bundle} accent={accent} profile={profile} />
+            ))}
+            {visibleTopics.length === 0 && !isLoading && !error && (
+              <PraxiaCard padding={20}>
+                <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink50, textAlign: "center" }}>
+                  Sem notícias neste tópico no momento.
+                </div>
+              </PraxiaCard>
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+function ModeToggleButton({
+  label,
+  active,
+  onClick,
+  accent,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  accent: string;
+}) {
+  const T = PraxiaTokens;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        height: 32,
+        borderRadius: 8,
+        background: active ? accent : "transparent",
+        color: active ? "white" : T.ink70,
+        border: "none",
+        fontFamily: T.body,
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -522,7 +650,7 @@ function TopicCard({
           Manchetes
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {bundle.items.slice(0, 8).map((item, i) => (
+          {(bundle.items ?? []).slice(0, 8).map((item, i) => (
             <ArticleRow key={`${item.link}-${i}`} item={item} />
           ))}
         </div>

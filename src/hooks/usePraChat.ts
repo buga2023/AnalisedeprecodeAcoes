@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, InvestorProfile, Stock } from "@/types/stock";
 import { riskLabel, horizonLabel, interestLabel } from "@/hooks/useInvestorProfile";
+import { PRAXIA_SYSTEM_PROMPT, CHAT_OUTPUT_SUFFIX } from "@/lib/praxiaPrompt";
 
 const STORAGE_KEY = "praxia-pra-chat";
 const PROFILE_MARKER = /\[PROFILE\]\s*(\{[\s\S]*?\})\s*\[\/PROFILE\]/;
+// Thinking tag pode aparecer no inicio das respostas (esperado pelo system prompt).
+// UI pode renderizar de forma especial; aqui so usamos pra strip se necessario.
+const THINKING_TAG = /<thinking>[\s\S]*?<\/thinking>\s*/;
 
 export type ChatTone = "casual" | "formal";
 
@@ -27,63 +31,68 @@ function load(): ChatMessage[] {
   return [];
 }
 
-function buildSystemPrompt(args: Omit<UsePraChatArgs, "onProfileDetected">): string {
+/**
+ * Monta o user prompt complementar para o chat. O PRAXIA_SYSTEM_PROMPT mestre
+ * (em src/lib/praxiaPrompt.ts) ja cobre identidade, cadeia de raciocinio,
+ * cadeias de transmissao, regras e exemplos. Aqui injetamos APENAS o contexto
+ * que muda por conversa: tom, perfil, carteira, modo de elicitacao.
+ */
+function buildChatContextPrompt(args: Omit<UsePraChatArgs, "onProfileDetected">): string {
   const { tone, profile, stocks, totalValue } = args;
+
   const personality =
     tone === "formal"
-      ? "Voce e Pra, consultora financeira profissional. Tom respeitoso, claro, linguagem de mercado mas acessivel. Use 'voce'."
-      : "Voce e Pra, mentora de investimentos amigavel e direta, como amiga que entende muito de mercado. Tom casual, descontraido. Seja breve.";
+      ? "TOM: profissional, respeitoso, linguagem de mercado mas acessivel. Use 'voce'."
+      : "TOM: amigavel e direto, como mentora que entende muito de mercado. Casual sem perder substancia.";
 
   const profileSummary = profile
-    ? `Perfil: ${riskLabel(profile.risk)}, horizonte ${horizonLabel(profile.horizon)}, interesses: ${profile.interests.map(interestLabel).join(", ")}.`
-    : "Perfil ainda nao definido.";
+    ? `PERFIL DO USUARIO: ${riskLabel(profile.risk)}, horizonte ${horizonLabel(
+        profile.horizon
+      )}, interesses: ${profile.interests.map(interestLabel).join(", ")}.`
+    : "PERFIL DO USUARIO: ainda nao definido.";
 
   const portfolio =
     stocks.length === 0
-      ? "Carteira vazia."
-      : `Patrimonio total estimado: R$ ${totalValue.toFixed(2)}. ` +
-        `Ativos (${stocks.length}): ` +
+      ? "CARTEIRA ATUAL: vazia."
+      : `CARTEIRA ATUAL (priorize estes tickers): patrimonio R$ ${totalValue.toFixed(
+          2
+        )} em ${stocks.length} ativos. ` +
         stocks
           .map(
             (s) =>
-              `${s.ticker} (R$ ${s.price.toFixed(2)}, ${s.changePercent >= 0 ? "+" : ""}${s.changePercent.toFixed(2)}%, ` +
-              `P/L ${s.pl.toFixed(1)}, P/VP ${s.pvp.toFixed(2)}, DY ${(s.dividendYield * 100).toFixed(1)}%, ` +
-              `ROE ${(s.roe * 100).toFixed(1)}%, Score ${s.score}/100, ` +
-              `Graham R$ ${(s.grahamValue ?? 0).toFixed(2)}, Margem Seg. ${(s.marginOfSafety ?? 0).toFixed(1)}%)`
+              `${s.ticker} (R$ ${s.price.toFixed(2)}, ${s.changePercent >= 0 ? "+" : ""}${s.changePercent.toFixed(
+                2
+              )}%, P/L ${s.pl.toFixed(1)}, P/VP ${s.pvp.toFixed(2)}, DY ${(s.dividendYield * 100).toFixed(
+                1
+              )}%, ROE ${(s.roe * 100).toFixed(1)}%, Score ${s.score}/100, Graham R$ ${(
+                s.grahamValue ?? 0
+              ).toFixed(2)}, MoS ${(s.marginOfSafety ?? 0).toFixed(1)}%)`
           )
           .join("; ") +
         ".";
 
-  const strategyMission =
-    "Seu papel: ajudar o usuario a planejar estrategias alinhadas ao PERFIL DELE — alocacao por setor, acoes da B3 pra estudar, momento de comprar/vender, rebalanceamento e tese de longo prazo. Quando relevante, use os numeros do portfolio. Sugira tickers especificos e da opinioes concretas, sem ficar em cima do muro. Lembre que decisoes finais sao do usuario.";
-
-  const profileRule = profile
-    ? "REGRA DE PERFIL (NUNCA QUEBRE): TODA recomendacao deve comecar referenciando o perfil. Exemplo: 'Pelo seu perfil moderado e horizonte de 1-5 anos, ...'. Sem isso, voce esta dando conselho generico — recuse e volte a perguntar."
-    : "REGRA DE PERFIL: o usuario AINDA nao tem perfil. NAO de recomendacao especifica de compra/venda. Sua prioridade e descobrir o perfil em ate 3 perguntas curtas (uma por mensagem). Quando tiver risco + horizonte + pelo menos 1 interesse, encerre com o marcador: [PROFILE]{\"risk\":\"low|mid|high\",\"horizon\":\"short|mid|long\",\"interests\":[\"div|gro|esg|tec\"]}[/PROFILE].";
-
-  const sourceRule = `REGRA DE FONTES (NUNCA QUEBRE): para CADA afirmacao fatual (preco, multiplo, noticia, resultado, evento corporativo, dado macro) cite a fonte no FINAL da mensagem em um bloco unico no formato:
-Fontes:
-[1] BrAPI -- preco/fundamentos atuais do app
-[2] Yahoo Finance -- historico
-[3] https://ri.exemplo.com.br/release-3t24.pdf
-[4] calculo do app -- valores de Graham/score
-[5] perfil do usuario
-
-Use [1], [2]... no corpo do texto para referenciar. Se NAO tem fonte verificavel pra um fato, escreva exatamente "(sem fonte verificavel)" no lugar e NAO afirme o fato. Numeros do PORTFOLIO acima ja vem da BrAPI -- pode citar [1] BrAPI.`;
+  // Modo de elicitacao de perfil — UNICO ao chat (outras capabilities nao
+  // perguntam perfil ao usuario, so consomem).
+  const elicitationMode = profile
+    ? ""
+    : `MODO ELICITACAO DE PERFIL ATIVO:
+- O usuario AINDA nao tem perfil definido.
+- NAO de recomendacao especifica de compra/venda.
+- Sua prioridade e descobrir o perfil em ate 3 perguntas curtas (uma por mensagem).
+- Quando tiver risco + horizonte + pelo menos 1 interesse, ENCERRE com o marcador EXATO:
+  [PROFILE]{"risk":"low|mid|high","horizon":"short|mid|long","interests":["div|gro|esg|tec"]}[/PROFILE]
+- NUNCA quebre o JSON do marker (sem virgula final, aspas duplas obrigatorias).`;
 
   return [
+    "MODO DE OUTPUT: chat (texto livre + bloco Fontes ao final).",
     personality,
-    "Responda em portugues brasileiro.",
-    "Respostas curtas por padrao (2-4 frases). Quando o usuario pedir analise/estrategia, pode chegar a 4-8 frases — mas SEMPRE com fontes no final.",
     profileSummary,
     portfolio,
-    strategyMission,
-    profileRule,
-    sourceRule,
-    "Nao use markdown pesado. Negrito ok. Sem bullet points longos.",
+    elicitationMode,
+    CHAT_OUTPUT_SUFFIX,
   ]
     .filter(Boolean)
-    .join("\n");
+    .join("\n\n");
 }
 
 function greetingFor(tone: ChatTone, profile: InvestorProfile | null): string {
@@ -174,9 +183,15 @@ export function usePraChat({ tone, profile, stocks, totalValue, onProfileDetecte
       setThinking(true);
 
       try {
-        const system = buildSystemPrompt(ctxRef.current);
+        const chatContext = buildChatContextPrompt(ctxRef.current);
+        // Padrao Anthropic: system prompt mestre define identidade + cadeia de
+        // raciocinio + exemplos; primeira user message carrega o CONTEXTO da
+        // conversa (perfil, carteira, modo de output); turns subsequentes sao
+        // as mensagens reais. max_tokens maior pra acomodar o bloco <thinking>.
         const apiMessages = [
-          { role: "system" as const, content: system },
+          { role: "system" as const, content: PRAXIA_SYSTEM_PROMPT },
+          { role: "user" as const, content: chatContext },
+          { role: "assistant" as const, content: "Entendido. Vou seguir o reasoning_chain e o output format de chat (thinking + resposta + Fontes)." },
           ...conversation.map((m) => ({
             role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
             content: m.text,
@@ -188,8 +203,10 @@ export function usePraChat({ tone, profile, stocks, totalValue, onProfileDetecte
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: apiMessages,
-            temperature: 0.6,
-            max_tokens: 700,
+            // Temperatura mais baixa pra seguir melhor o reasoning_chain.
+            temperature: 0.4,
+            // max_tokens maior pra acomodar <thinking> + resposta + Fontes.
+            max_tokens: 1400,
           }),
         });
 
@@ -199,7 +216,11 @@ export function usePraChat({ tone, profile, stocks, totalValue, onProfileDetecte
         }
 
         const data = await response.json();
-        const raw = (data.content ?? "").trim() || fallbackReply(trimmed);
+        let raw = String(data.content ?? "").trim() || fallbackReply(trimmed);
+        // Strip do bloco <thinking>...</thinking> antes de exibir — eh chain of
+        // thought interno, nao precisa poluir a UI. Pode ser exposto via toggle
+        // "ver raciocinio" no futuro se quisermos transparencia.
+        raw = raw.replace(THINKING_TAG, "").trim();
         const { clean, draft } = tryExtractProfile(raw);
 
         if (draft && onProfileRef.current) {
