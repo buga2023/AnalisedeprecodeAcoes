@@ -22,7 +22,6 @@ export interface ErrorContext {
 
 export function captureError(err: unknown, ctx: ErrorContext): void {
   const msg = err instanceof Error ? err.message : String(err);
-  // eslint-disable-next-line no-console
   console.error(`[telemetry:${ctx.tag}] ${msg.slice(0, 200)}`, ctx.extra ?? "");
 }
 
@@ -31,7 +30,6 @@ export function captureError(err: unknown, ctx: ErrorContext): void {
  * estados degradados detectados, etc.). Hoje só loga.
  */
 export function captureMessage(message: string, ctx: ErrorContext): void {
-  // eslint-disable-next-line no-console
   console.warn(`[telemetry:${ctx.tag}] ${message.slice(0, 200)}`, ctx.extra ?? "");
 }
 

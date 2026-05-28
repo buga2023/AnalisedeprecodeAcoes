@@ -1,6 +1,7 @@
 import type { InvestorProfile } from "@/types/stock";
 import type { WorldNewsTopicBundle } from "./context";
 import { PRAXIA_SYSTEM_PROMPT, JSON_ONLY_SUFFIX } from "./praxiaPrompt";
+import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
 
 /**
  * Resumo IA de um bundle de notícias (um tópico) — passa pelo /api/ai como
@@ -73,7 +74,17 @@ export async function resumirNoticiasComIA(
 ): Promise<ResumoNoticiasIA> {
   const sig = signatureFor(bundle);
   const cached = readCache(bundle.topic, sig);
-  if (cached) return cached;
+  if (cached) {
+    recordHit("news_topic");
+    return cached;
+  }
+
+  // Rate-limit guard preventivo.
+  const gate = checkRateLimit();
+  if (!gate.allowed) {
+    const seconds = Math.ceil(gate.retryAfterMs / 1000);
+    throw new Error(`Limite de chamadas IA atingido. Aguarde ~${seconds}s.`);
+  }
 
   if (bundle.items.length === 0) {
     return {
@@ -169,6 +180,13 @@ Use no maximo 5 alvos. ${JSON_ONLY_SUFFIX}`;
   // Defesas mínimas: garante arrays
   if (!Array.isArray(parsed.alvos)) parsed.alvos = [];
   if (!Array.isArray(parsed.fontes)) parsed.fontes = [];
+
+  // Telemetria.
+  recordCall(
+    "news_topic",
+    estimateTokens(PRAXIA_SYSTEM_PROMPT) + estimateTokens(userPrompt),
+    estimateTokens(raw)
+  );
 
   writeCache(bundle.topic, sig, parsed);
   return parsed;

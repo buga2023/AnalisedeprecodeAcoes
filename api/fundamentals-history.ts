@@ -49,14 +49,6 @@ export interface FundamentalQuarter {
   pl?: number;
 }
 
-interface YahooStmt<K extends string> {
-  endDate?: { raw?: number };
-  [key: string]: { raw?: number } | undefined | { raw?: number };
-  // helper type — Yahoo entries are { raw, fmt, longFmt }
-  // (deixamos `unknown` interno; o acesso e via raw())
-  _opaque?: K;
-}
-
 interface YahooIncomeStmt {
   endDate?: { raw?: number };
   netIncome?: { raw?: number };
