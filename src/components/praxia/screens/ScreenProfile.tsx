@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { PraxiaTokens, ACCENT_OPTIONS } from "../tokens";
 import { PraxiaBackground } from "../PraxiaBackground";
@@ -12,6 +12,13 @@ import {
   interestLabel,
 } from "@/hooks/useInvestorProfile";
 import type { ChatTone } from "@/hooks/usePraChat";
+import {
+  clearCacheByKind,
+  clearStats,
+  getStats,
+  type CacheKind,
+  type TelemetryStats,
+} from "@/lib/aiTelemetry";
 
 interface ScreenProfileProps {
   profile: InvestorProfile | null;
@@ -25,6 +32,7 @@ interface ScreenProfileProps {
   onRetakeQuiz: () => void;
   onOpenBatchValuation?: () => void;
   onOpenActivity?: () => void;
+  onOpenDividends?: () => void;
   onLogout: () => void;
   onClearLocalData: () => void;
 }
@@ -41,11 +49,42 @@ export function ScreenProfile({
   onRetakeQuiz,
   onOpenBatchValuation,
   onOpenActivity,
+  onOpenDividends,
   onLogout,
   onClearLocalData,
 }: ScreenProfileProps) {
   const T = PraxiaTokens;
   const [showAI, setShowAI] = useState(false);
+  const [aiStats, setAiStats] = useState<TelemetryStats>(() => getStats());
+
+  // Atualiza stats quando a tela ganha foco — barato e mantem o painel atual.
+  useEffect(() => {
+    const handler = () => setAiStats(getStats());
+    window.addEventListener("focus", handler);
+    return () => window.removeEventListener("focus", handler);
+  }, []);
+
+  const handleClearCache = (kind: CacheKind) => {
+    const removed = clearCacheByKind(kind);
+    setAiStats(getStats());
+    // Toast simples sem dep — alert nativo. Pode evoluir pra Sonner depois.
+    if (removed > 0) {
+      // eslint-disable-next-line no-console
+      console.info(`[Praxia] cache ${kind} limpo: ${removed} entrada(s).`);
+    }
+  };
+
+  const handleClearStats = () => {
+    clearStats();
+    setAiStats(getStats());
+  };
+
+  const hitRate =
+    aiStats.totalCalls + aiStats.totalHits > 0
+      ? Math.round(
+          (aiStats.totalHits / (aiStats.totalCalls + aiStats.totalHits)) * 100
+        )
+      : 0;
 
   return (
     <div
@@ -264,10 +303,15 @@ export function ScreenProfile({
         </PraxiaCard>
 
         {/* Ferramentas */}
-        {(onOpenBatchValuation || onOpenActivity) && (
+        {(onOpenBatchValuation || onOpenActivity || onOpenDividends) && (
           <PraxiaCard padding={16}>
             <SettingLabel label="Ferramentas" sub="Análises avançadas e importação" />
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {onOpenDividends && (
+                <ToolButton accent={accent} onClick={onOpenDividends} icon={<Icon.invest size={14} color={accent} />}>
+                  Calendário de dividendos
+                </ToolButton>
+              )}
               {onOpenBatchValuation && (
                 <ToolButton accent={accent} onClick={onOpenBatchValuation} icon={<Icon.invest size={14} color={accent} />}>
                   Valuation em lote (CSV/XLSX)
@@ -281,6 +325,121 @@ export function ScreenProfile({
             </div>
           </PraxiaCard>
         )}
+
+        {/* Uso de IA — telemetria local + cache clear granular */}
+        <PraxiaCard padding={16}>
+          <SettingLabel
+            label="Uso de IA"
+            sub="Chamadas LLM e cache local — tudo medido neste navegador"
+          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            <StatBox
+              label="Chamadas"
+              value={String(aiStats.totalCalls)}
+              accent={accent}
+            />
+            <StatBox
+              label="Hits cache"
+              value={`${aiStats.totalHits} (${hitRate}%)`}
+              accent={T.up}
+            />
+            <StatBox
+              label="Tokens (est.)"
+              value={
+                aiStats.totalEstTokens >= 1000
+                  ? `${(aiStats.totalEstTokens / 1000).toFixed(1)}k`
+                  : String(aiStats.totalEstTokens)
+              }
+              accent={accent}
+            />
+          </div>
+
+          <div
+            style={{
+              marginTop: 14,
+              fontFamily: T.body,
+              fontSize: 11,
+              color: T.ink50,
+              lineHeight: 1.5,
+            }}
+          >
+            Limpar uma categoria força a Pra a gerar de novo na próxima vez.
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, 1fr)",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            <CacheClearButton
+              label="Análises de ação"
+              onClick={() => handleClearCache("analise")}
+              accent={accent}
+            />
+            <CacheClearButton
+              label="Insights da carteira"
+              onClick={() => handleClearCache("insights")}
+              accent={accent}
+            />
+            <CacheClearButton
+              label="Análises de notícias"
+              onClick={() => handleClearCache("news_feed")}
+              accent={accent}
+            />
+            <CacheClearButton
+              label="Comparações"
+              onClick={() => handleClearCache("comparacao")}
+              accent={accent}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button
+              onClick={() => handleClearCache("all")}
+              style={{
+                flex: 1,
+                height: 36,
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.04)",
+                color: T.ink,
+                border: `0.5px solid ${T.hairline}`,
+                fontFamily: T.body,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Limpar todo cache de IA
+            </button>
+            <button
+              onClick={handleClearStats}
+              style={{
+                flex: 1,
+                height: 36,
+                borderRadius: 10,
+                background: "transparent",
+                color: T.ink50,
+                border: `0.5px solid ${T.hairline}`,
+                fontFamily: T.body,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Zerar estatísticas
+            </button>
+          </div>
+        </PraxiaCard>
 
         {/* Danger */}
         <PraxiaCard padding={16}>
@@ -538,5 +697,80 @@ function AIProviderForm({
         </button>
       </div>
     </div>
+  );
+}
+
+function StatBox({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  const T = PraxiaTokens;
+  return (
+    <div
+      style={{
+        padding: "10px 8px",
+        borderRadius: 10,
+        background: "rgba(255,255,255,0.03)",
+        border: `0.5px solid ${T.hairline}`,
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          fontFamily: T.display,
+          fontSize: 15,
+          fontWeight: 700,
+          color: accent,
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontFamily: T.body,
+          fontSize: 10,
+          color: T.ink50,
+          marginTop: 2,
+          letterSpacing: 0.3,
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function CacheClearButton({
+  label,
+  onClick,
+  accent,
+}: {
+  label: string;
+  onClick: () => void;
+  accent: string;
+}) {
+  const T = PraxiaTokens;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        height: 34,
+        borderRadius: 9,
+        background: `${accent}10`,
+        color: T.ink70,
+        border: `0.5px solid ${accent}33`,
+        fontFamily: T.body,
+        fontSize: 11.5,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
   );
 }

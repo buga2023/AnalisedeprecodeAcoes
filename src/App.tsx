@@ -39,11 +39,17 @@ const ScreenNews = lazy(() =>
 const ScreenAnalysis = lazy(() =>
   import("@/components/praxia/screens/ScreenAnalysis").then((m) => ({ default: m.ScreenAnalysis }))
 );
+const ScreenDividends = lazy(() =>
+  import("@/components/praxia/screens/ScreenDividends").then((m) => ({ default: m.ScreenDividends }))
+);
 const ChatSheet = lazy(() =>
   import("@/components/praxia/ChatSheet").then((m) => ({ default: m.ChatSheet }))
 );
 const PortfolioInsightsModal = lazy(() =>
   import("@/components/praxia/PortfolioInsightsModal").then((m) => ({ default: m.PortfolioInsightsModal }))
+);
+const OptimizeDividendsModal = lazy(() =>
+  import("@/components/praxia/OptimizeDividendsModal").then((m) => ({ default: m.OptimizeDividendsModal }))
 );
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { useInvestorProfile } from "@/hooks/useInvestorProfile";
@@ -51,6 +57,7 @@ import { useTransactions } from "@/hooks/useTransactions";
 import { useUIPreferences } from "@/hooks/useUIPreferences";
 import { useAIProvider } from "@/hooks/useAIProvider";
 import { useAlerts } from "@/hooks/useAlerts";
+import { useDividendCalendar } from "@/hooks/useDividendCalendar";
 import { totalPortfolioValue } from "@/lib/portfolio";
 import type {
   AIProviderConfig,
@@ -59,7 +66,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news";
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends";
 
 function ScreenFallback() {
   return (
@@ -98,6 +105,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
   const {
     alerts,
     activeAlerts,
+    triggeredAlerts,
     permission: notifPermission,
     requestPermission: requestNotifPermission,
     createAlert,
@@ -105,6 +113,9 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     resetAlert,
     checkAlerts,
   } = useAlerts();
+  // Lift do calendario de dividendos para o app raiz — fornece dados para o
+  // digest semanal (WeeklyDigestCard) sem duplicar fetches Yahoo nas telas.
+  const { rawHistoryByTicker } = useDividendCalendar(stocks);
 
   const [bootScreen, setBootScreen] = useState<"quiz" | "app">(() => {
     if (profile) return "app";
@@ -121,6 +132,8 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [alertSheetStock, setAlertSheetStock] = useState<Stock | null>(null);
   const [compareTickers, setCompareTickers] = useState<string[]>([]);
+  const [optimizeOpen, setOptimizeOpen] = useState(false);
+  const [optimizeAnnual, setOptimizeAnnual] = useState(0);
 
   const toggleCompareTicker = useCallback((ticker: string) => {
     setCompareTickers((prev) => {
@@ -269,6 +282,14 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onOpenAlerts={() => setScreen("alerts")}
           onOpenNews={() => setScreen("news")}
           activeAlertCount={activeAlerts.length}
+          transactions={transactions}
+          triggeredAlerts={triggeredAlerts}
+          dividendHistoryByTicker={rawHistoryByTicker}
+          onNavigate={(target) => {
+            // O DigestScreenTarget e um subset do Screen union — todos os valores
+            // sao screens validos da app.
+            setScreen(target);
+          }}
         />
       )}
 
@@ -305,6 +326,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           }}
           onOpenBatchValuation={() => setScreen("batch")}
           onOpenActivity={() => setScreen("activity")}
+          onOpenDividends={() => setScreen("dividends")}
           onLogout={onLogout}
           onClearLocalData={clearAllLocal}
         />
@@ -347,6 +369,18 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             profile={profile}
             stocks={stocks}
             onBack={() => setScreen("home")}
+          />
+        )}
+
+        {screen === "dividends" && (
+          <ScreenDividends
+            accent={accent}
+            stocks={stocks}
+            onBack={() => setScreen("profile")}
+            onOptimize={(annual) => {
+              setOptimizeAnnual(annual);
+              setOptimizeOpen(true);
+            }}
           />
         )}
 
@@ -468,6 +502,19 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             onClose={() => setInsightsOpen(false)}
             stocks={stocks}
             profile={profile}
+            accent={accent}
+          />
+        </Suspense>
+      )}
+
+      {optimizeOpen && (
+        <Suspense fallback={null}>
+          <OptimizeDividendsModal
+            open={optimizeOpen}
+            onClose={() => setOptimizeOpen(false)}
+            stocks={stocks}
+            profile={profile}
+            annualProjected={optimizeAnnual}
             accent={accent}
           />
         </Suspense>
