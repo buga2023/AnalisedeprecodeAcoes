@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "./_cors";
+import { checkRateLimit } from "./_ratelimit";
+
+const TICKER_OK = /^[A-Z0-9.\-^=]{1,12}$/;
 
 /**
  * Proxy de notícias via Google News RSS — sem API key. Aceita `?ticker=PETR4`
@@ -148,12 +151,22 @@ function buildRegulatoryTopicQuery(): string {
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (applyCors(request, response, "GET, OPTIONS")) return;
 
+  const rate = checkRateLimit(request, { windowMs: 60_000, max: 30, burstMax: 5, burstWindowMs: 5_000 });
+  if (!rate.allowed) {
+    response.setHeader("Retry-After", String(rate.retryAfterSec));
+    return response.status(429).json({ error: "rate-limited", retryAfterSec: rate.retryAfterSec });
+  }
+
   try {
     const ticker = String(request.query.ticker || "").toUpperCase().trim();
-    const q = String(request.query.q || "").trim();
-    const topic = String(request.query.topic || "").trim().toLowerCase();
-    const kind = String(request.query.kind || "").trim().toLowerCase();
+    const q = String(request.query.q || "").trim().slice(0, 200);
+    const topic = String(request.query.topic || "").trim().toLowerCase().slice(0, 50);
+    const kind = String(request.query.kind || "").trim().toLowerCase().slice(0, 20);
     const limit = Math.min(12, Math.max(1, Number(request.query.limit) || 8));
+
+    if (ticker && !TICKER_OK.test(ticker)) {
+      return response.status(400).json({ error: "Ticker inválido" });
+    }
 
     let query: string;
     let resolvedKind: "news" | "regulatory" = "news";

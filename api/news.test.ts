@@ -7,6 +7,16 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
+// Handler aplica rate-limit (30/min) — IP único por request pra testes sequenciais.
+let ipCounter = 0;
+function reqWithUniqueIp(opts: Parameters<typeof makeReq>[0] = {}) {
+  ipCounter += 1;
+  return makeReq({
+    ...opts,
+    headers: { ...(opts.headers ?? {}), "x-forwarded-for": `10.0.3.${ipCounter}` },
+  });
+}
+
 const sampleRSS = `<?xml version="1.0"?><rss><channel>
   <item>
     <title><![CDATA[Petrobras anuncia resultado]]></title>
@@ -18,14 +28,14 @@ const sampleRSS = `<?xml version="1.0"?><rss><channel>
 
 describe("api/news handler", () => {
   it("responde 204 em OPTIONS", async () => {
-    const req = makeReq({ method: "OPTIONS" });
+    const req = reqWithUniqueIp({ method: "OPTIONS" });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(204);
   });
 
   it("400 quando sem ticker/q/topic", async () => {
-    const req = makeReq();
+    const req = reqWithUniqueIp();
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(400);
@@ -33,7 +43,7 @@ describe("api/news handler", () => {
 
   it("retorna manchetes por ticker", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(sampleRSS, { status: 200 })));
-    const req = makeReq({ query: { ticker: "PETR4" } });
+    const req = reqWithUniqueIp({ query: { ticker: "PETR4" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -42,7 +52,7 @@ describe("api/news handler", () => {
 
   it("retorna manchetes por topic", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(sampleRSS, { status: 200 })));
-    const req = makeReq({ query: { topic: "politica" } });
+    const req = reqWithUniqueIp({ query: { topic: "politica" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -51,7 +61,7 @@ describe("api/news handler", () => {
 
   it("retorna [] em falha do fetch", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 500 })));
-    const req = makeReq({ query: { q: "noticia qualquer" } });
+    const req = reqWithUniqueIp({ query: { q: "noticia qualquer" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -67,7 +77,7 @@ describe("api/news handler", () => {
         return new Response(sampleRSS, { status: 200 });
       })
     );
-    const req = makeReq({ query: { ticker: "PETR4", kind: "regulatory" } });
+    const req = reqWithUniqueIp({ query: { ticker: "PETR4", kind: "regulatory" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -79,7 +89,7 @@ describe("api/news handler", () => {
 
   it("topic=regulatorio sem ticker monta query macro de B3/CVM", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(sampleRSS, { status: 200 })));
-    const req = makeReq({ query: { topic: "regulatorio" } });
+    const req = reqWithUniqueIp({ query: { topic: "regulatorio" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);

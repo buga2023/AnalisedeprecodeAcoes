@@ -1,227 +1,82 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { applyCors } from './_cors';
-import { checkRateLimit } from './_ratelimit';
-import { cacheKey, getCached, setCached } from './_aicache';
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { applyCors } from "./_cors";
+import { checkRateLimit } from "./_ratelimit";
+import { cacheKey, getCached, setCached } from "./_aicache";
+import { callLLM, defaultProvider, getProviderApiKey, LLMError, PROVIDERS, type Message, type Provider } from "./_llm";
 
-export default async function handler(
-  request: VercelRequest,
-  response: VercelResponse
-) {
-  if (applyCors(request, response, 'POST, OPTIONS')) return;
+const MAX_TOKENS_HARD_CAP = 2048;
 
-  if (request.method !== 'POST') {
-    return response.status(405).json({ error: 'Method Not Allowed' });
+export default async function handler(request: VercelRequest, response: VercelResponse) {
+  if (applyCors(request, response, "POST, OPTIONS")) return;
+
+  if (request.method !== "POST") {
+    return response.status(405).json({ error: "Method Not Allowed" });
   }
 
   // Rate limit conservador: 10 req/min/IP + burst 3 req em 5s.
   // Groq free tier tem cota baixa — limite agressivo evita estourar.
-  const rate = checkRateLimit(request, {
-    windowMs: 60_000,
-    max: 10,
-    burstMax: 3,
-    burstWindowMs: 5_000,
-  });
+  const rate = checkRateLimit(request, { windowMs: 60_000, max: 10, burstMax: 3, burstWindowMs: 5_000 });
   if (!rate.allowed) {
-    response.setHeader('Retry-After', String(rate.retryAfterSec));
+    response.setHeader("Retry-After", String(rate.retryAfterSec));
     return response.status(429).json({
       error:
-        rate.reason === 'burst'
-          ? 'Calma — espere alguns segundos entre mensagens.'
-          : 'Muitas requisições no último minuto. Tente novamente em breve.',
+        rate.reason === "burst"
+          ? "Calma — espere alguns segundos entre mensagens."
+          : "Muitas requisições no último minuto. Tente novamente em breve.",
       retryAfterSec: rate.retryAfterSec,
     });
   }
 
-  const { provider: bodyProvider, messages, temperature = 0.7, max_tokens = 2048, response_format } = request.body;
-
-  const provider = (bodyProvider || process.env.AI_PROVIDER || 'groq') as string;
-
-  const envKeyMap: Record<string, string | undefined> = {
-    openai: process.env.OPENAI_API_KEY,
-    anthropic: process.env.ANTHROPIC_API_KEY,
-    gemini: process.env.GEMINI_API_KEY,
-    groq: process.env.GROQ_API_KEY,
+  const body = request.body || {};
+  const { messages, temperature = 0.7, max_tokens: rawMaxTokens = 2048, response_format } = body as {
+    messages: Message[];
+    temperature?: number;
+    max_tokens?: number;
+    response_format?: unknown;
   };
-  const apiKey = envKeyMap[provider];
 
-  if (!apiKey) {
+  // Teto absoluto pra evitar bill drain via input do cliente.
+  const max_tokens = Math.min(MAX_TOKENS_HARD_CAP, Math.max(1, Number(rawMaxTokens) || 2048));
+
+  const bodyProvider = (body as { provider?: string }).provider;
+  const provider: Provider = PROVIDERS.includes(bodyProvider as Provider)
+    ? (bodyProvider as Provider)
+    : defaultProvider();
+
+  if (!getProviderApiKey(provider)) {
     return response.status(503).json({
       error: `IA nao configurada no servidor: defina ${provider.toUpperCase()}_API_KEY no ambiente.`,
     });
   }
 
   if (!Array.isArray(messages) || messages.length === 0) {
-    return response.status(400).json({ error: 'messages e obrigatorio.' });
+    return response.status(400).json({ error: "messages e obrigatorio." });
   }
 
   // Cache: mesma combinação de (provider, messages, temperature, max_tokens,
-  // response_format) → devolve resposta cacheada sem chamar a Groq. TTL 10min.
+  // response_format) → devolve resposta cacheada sem chamar o provider. TTL 10min.
   const key = cacheKey({ provider, messages, temperature, max_tokens, response_format });
   const cached = getCached(key);
   if (cached) {
-    response.setHeader('X-Cache', 'HIT');
+    response.setHeader("X-Cache", "HIT");
     return response.status(200).json(cached);
   }
-  response.setHeader('X-Cache', 'MISS');
+  response.setHeader("X-Cache", "MISS");
 
   try {
-    let result;
-    switch (provider) {
-      case 'openai':
-        result = await handleOpenAI(apiKey, messages, temperature, max_tokens, response_format);
-        break;
-      case 'anthropic':
-        result = await handleAnthropic(apiKey, messages, temperature, max_tokens);
-        break;
-      case 'gemini':
-        result = await handleGemini(apiKey, messages, temperature, max_tokens);
-        break;
-      case 'groq':
-        result = await handleGroq(apiKey, messages, temperature, max_tokens, response_format);
-        break;
-      default:
-        return response.status(400).json({ error: `Provider ${provider} nao suportado.` });
-    }
-
+    const result = await callLLM({ provider, messages, temperature, max_tokens, response_format });
     setCached(key, result);
     return response.status(200).json(result);
-  } catch (error: any) {
-    console.error(`Erro no provider ${provider}:`, error);
-    const status = error.status || 500;
-    const message = error.message || `Erro interno no servidor ao processar ${provider}`;
-    
-    if (status === 401 || status === 403) {
-      return response.status(401).json({ error: `API key invalida para ${provider}` });
+  } catch (error) {
+    if (error instanceof LLMError) {
+      // Log sanitizado: status + mensagem curta, sem payload upstream cru.
+      console.error("[api/ai] %s %d %s", provider, error.status, String(error.message).slice(0, 120));
+      const status = error.status === 401 || error.status === 403 ? 401 : error.status;
+      const message = status === 401 ? `API key invalida para ${provider}` : error.message;
+      return response.status(status).json({ error: message });
     }
-
-    return response.status(status).json({ error: message });
+    const msg = error instanceof Error ? error.message : "Erro interno";
+    console.error("[api/ai] %s 500 %s", provider, msg.slice(0, 120));
+    return response.status(500).json({ error: `Erro interno no servidor ao processar ${provider}` });
   }
-}
-
-async function handleOpenAI(apiKey: string, messages: any[], temperature: number, max_tokens: number, response_format: any) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages,
-      temperature,
-      max_tokens,
-      ...(response_format ? { response_format } : {}),
-    }),
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw { status: res.status, message: error.error?.message || 'Erro na OpenAI' };
-  }
-
-  const data = await res.json();
-  return { 
-    content: data.choices[0].message.content,
-    provider: 'openai'
-  };
-}
-
-async function handleAnthropic(apiKey: string, messages: any[], temperature: number, max_tokens: number) {
-  // Anthropic messages format differs slightly
-  const systemMessage = messages.find(m => m.role === 'system')?.content;
-  const userMessages = messages.filter(m => m.role !== 'system');
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
-      system: systemMessage,
-      messages: userMessages,
-      temperature,
-      max_tokens,
-    }),
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw { status: res.status, message: error.error?.message || 'Erro na Anthropic' };
-  }
-
-  const data = await res.json();
-  return { 
-    content: data.content[0].text,
-    provider: 'anthropic'
-  };
-}
-
-async function handleGemini(apiKey: string, messages: any[], temperature: number, max_tokens: number) {
-  const model = 'gemini-1.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  // Gemini expects a different structure
-  const contents = messages.filter(m => m.role !== 'system').map(m => ({
-    role: m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.content }]
-  }));
-
-  const systemInstruction = messages.find(m => m.role === 'system')?.content;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents,
-      ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
-      generationConfig: {
-        temperature,
-        maxOutputTokens: max_tokens,
-      }
-    }),
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw { status: res.status, message: error.error?.message || 'Erro no Gemini' };
-  }
-
-  const data = await res.json();
-  return { 
-    content: data.candidates[0].content.parts[0].text,
-    provider: 'gemini'
-  };
-}
-
-async function handleGroq(apiKey: string, messages: any[], temperature: number, max_tokens: number, response_format: any) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      temperature,
-      max_tokens,
-      ...(response_format ? { response_format } : {}),
-    }),
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw { status: res.status, message: error.error?.message || 'Erro no Groq' };
-  }
-
-  const data = await res.json();
-  return { 
-    content: data.choices[0].message.content,
-    provider: 'groq'
-  };
 }

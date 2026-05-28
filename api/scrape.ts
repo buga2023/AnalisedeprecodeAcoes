@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { applyCors } from './_cors';
+import { checkRateLimit } from './_ratelimit';
 
 const FONTES = {
   investidor10: (ticker: string) =>
@@ -74,6 +75,16 @@ export default async function handler(
   response: VercelResponse
 ) {
   if (applyCors(request, response, 'GET, OPTIONS')) return;
+
+  // Scraping de sites BR (Investidor10/StatusInvest/Fundamentus) com headers
+  // de browser-impersonation — uso abusivo do nosso endpoint vira ban do IP
+  // do Vercel pra todos os clientes. 20/min é mais que suficiente (1 chamada
+  // por análise IA de ticker).
+  const rate = checkRateLimit(request, { windowMs: 60_000, max: 20, burstMax: 3, burstWindowMs: 5_000 });
+  if (!rate.allowed) {
+    response.setHeader('Retry-After', String(rate.retryAfterSec));
+    return response.status(429).json({ error: 'rate-limited', retryAfterSec: rate.retryAfterSec });
+  }
 
   try {
 

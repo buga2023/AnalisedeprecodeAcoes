@@ -15,7 +15,6 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "codex": "^0.2.3",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -32,7 +31,7 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vercel/node": "^3.0.0",
+    "@vercel/node": "^5.8.7",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^9.39.1",

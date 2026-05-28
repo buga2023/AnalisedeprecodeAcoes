@@ -1,5 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { applyCors } from './_cors';
+import { checkRateLimit } from './_ratelimit';
+
+// Aceita tickers B3 (PETR4, SANB11), US (AAPL), índices (^BVSP) e pares
+// (BRK-B, USDBRL=X). Rejeita lixo/SSRF cedo. Limite de 12 chars já corta
+// payloads bizarros sem barrar nenhum ativo real.
+const TICKER_OK = /^[A-Z0-9.\-^=]{1,12}$/;
 
 /**
  * PROXY 100% YAHOO FINANCE
@@ -24,16 +30,45 @@ const YAHOO_HEADERS: Record<string, string> = {
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (applyCors(request, response, 'GET, OPTIONS')) return;
 
+  // Rate-limit liberal: o portfolio polling pode bater até 60 quotes/min em
+  // carteiras grandes + batch valuation (planilha) faz burst. 120/min cobre
+  // sem prejudicar UX legítima; barra script abusivo.
+  const rate = checkRateLimit(request, {
+    windowMs: 60_000,
+    max: 120,
+    burstMax: 30,
+    burstWindowMs: 5_000,
+  });
+  if (!rate.allowed) {
+    response.setHeader('Retry-After', String(rate.retryAfterSec));
+    return response.status(429).json({ error: 'rate-limited', retryAfterSec: rate.retryAfterSec });
+  }
+
   const endpoint = String(request.query.endpoint || "");
 
   try {
     // 1. COTAÇÕES E FUNDAMENTOS
     if (endpoint.includes('/quote/')) {
       const tickersRaw = endpoint.split('/').pop() || "";
-      const tickers = tickersRaw.split(',').map(t => t.trim()).filter(t => t !== "");
+      const tickers = tickersRaw
+        .split(',')
+        .map(t => t.trim().toUpperCase())
+        .filter(t => t !== "");
 
       if (tickers.length === 0) {
         return response.status(400).json({ error: "Nenhum ticker fornecido" });
+      }
+
+      // Reject obvious garbage / SSRF / super-long inputs antes de bater no Yahoo.
+      const invalid = tickers.filter(t => !TICKER_OK.test(t));
+      if (invalid.length > 0) {
+        return response.status(400).json({
+          error: `Ticker inválido: ${invalid.slice(0, 3).join(", ")}`,
+        });
+      }
+      // Hard cap: máximo 30 tickers por chamada (já mais do que carteira típica).
+      if (tickers.length > 30) {
+        return response.status(400).json({ error: "Máximo 30 tickers por chamada" });
       }
 
       const modules = String(request.query.modules || "");

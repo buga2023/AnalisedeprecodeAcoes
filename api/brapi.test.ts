@@ -8,23 +8,33 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
+// Handler aplica rate-limit (120/min) — IP único por request pra testes sequenciais.
+let ipCounter = 0;
+function reqWithUniqueIp(opts: Parameters<typeof makeReq>[0] = {}) {
+  ipCounter += 1;
+  return makeReq({
+    ...opts,
+    headers: { ...(opts.headers ?? {}), "x-forwarded-for": `10.0.2.${ipCounter}` },
+  });
+}
+
 describe("api/brapi handler", () => {
   it("responde 204 em OPTIONS", async () => {
-    const req = makeReq({ method: "OPTIONS" });
+    const req = reqWithUniqueIp({ method: "OPTIONS" });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(204);
   });
 
   it("retorna 404 quando endpoint não mapeado", async () => {
-    const req = makeReq({ query: { endpoint: "/unknown" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/unknown" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(404);
   });
 
   it("/available retorna lista BR padrão", async () => {
-    const req = makeReq({ query: { endpoint: "/available" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/available" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -32,7 +42,7 @@ describe("api/brapi handler", () => {
   });
 
   it("/search retorna [] quando q vazio", async () => {
-    const req = makeReq({ query: { endpoint: "/search" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/search" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -53,7 +63,7 @@ describe("api/brapi handler", () => {
         )
       )
     );
-    const req = makeReq({ query: { endpoint: "/search", q: "petr" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/search", q: "petr" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
@@ -61,7 +71,7 @@ describe("api/brapi handler", () => {
   });
 
   it("/quote: 400 quando ticker vazio", async () => {
-    const req = makeReq({ query: { endpoint: "/quote/" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/quote/" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(400);
@@ -72,7 +82,7 @@ describe("api/brapi handler", () => {
       "fetch",
       vi.fn(async () => new Response("", { status: 404 }))
     );
-    const req = makeReq({ query: { endpoint: "/quote/ZZZZ9" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/quote/ZZZZ9" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(404);
@@ -110,7 +120,7 @@ describe("api/brapi handler", () => {
         return new Response("{}", { status: 200 });
       })
     );
-    const req = makeReq({ query: { endpoint: "/quote/PETR4" } });
+    const req = reqWithUniqueIp({ query: { endpoint: "/quote/PETR4" } });
     const res = makeRes();
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);

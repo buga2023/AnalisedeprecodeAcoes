@@ -1,5 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "./_cors";
+import { checkRateLimit } from "./_ratelimit";
+import { cacheKey, getCached, setCached } from "./_aicache";
+import { callLLM, defaultProvider, LLMError } from "./_llm";
+
+const TICKER_OK = /^[A-Z0-9.\-^=]{1,12}$/;
 
 /**
  * /api/fundamentals?ticker=PETR4
@@ -66,70 +71,22 @@ interface FundamentalsResponse {
 }
 
 async function callAI(prompt: string, max_tokens = 1800): Promise<string> {
-  const provider = (process.env.AI_PROVIDER || "groq") as string;
-  const envMap: Record<string, string | undefined> = {
-    groq: process.env.GROQ_API_KEY,
-    openai: process.env.OPENAI_API_KEY,
-    anthropic: process.env.ANTHROPIC_API_KEY,
-    gemini: process.env.GEMINI_API_KEY,
-  };
-  const key = envMap[provider];
-  if (!key) throw new Error(`IA não configurada (${provider.toUpperCase()}_API_KEY ausente)`);
-
-  // Usa o mesmo handler interno chamando diretamente o upstream Groq por padrão
-  if (provider === "groq") {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Voce e analista fundamentalista. Responda APENAS com JSON valido, sem markdown.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.4,
-        max_tokens,
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`AI upstream ${res.status}: ${errBody.slice(0, 200)}`);
-    }
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? "";
-  }
-
-  // Fallback para OpenAI
-  if (provider === "openai") {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Voce e analista fundamentalista. Responda APENAS com JSON valido, sem markdown.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.4,
-        max_tokens,
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}`);
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? "";
-  }
-
-  throw new Error(`Provider ${provider} ainda não suportado no fallback de fundamentals`);
+  // Agora compartilha o helper de `api/_llm.ts` — mesma matriz de provider
+  // do `/api/ai`, mesma sanitização de chave, mesmas mensagens de erro.
+  const { content } = await callLLM({
+    provider: defaultProvider(),
+    messages: [
+      {
+        role: "system",
+        content: "Voce e analista fundamentalista. Responda APENAS com JSON valido, sem markdown.",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.4,
+    max_tokens,
+    response_format: { type: "json_object" },
+  });
+  return content;
 }
 
 function buildPrompt(ticker: string, currentPrice?: number): string {
@@ -225,6 +182,26 @@ function cleanJson(raw: string): string {
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (applyCors(request, response, "GET, OPTIONS")) return;
 
+  // Rate-limit igual ao /api/ai: este endpoint também consome cota Groq/OpenAI.
+  // Sem isso, o cliente pode martelar /api/fundamentals?ticker=X mudando X e
+  // bypassar a proteção de /api/ai.
+  const rate = checkRateLimit(request, {
+    windowMs: 60_000,
+    max: 10,
+    burstMax: 3,
+    burstWindowMs: 5_000,
+  });
+  if (!rate.allowed) {
+    response.setHeader("Retry-After", String(rate.retryAfterSec));
+    return response.status(429).json({
+      error:
+        rate.reason === "burst"
+          ? "Calma — espere alguns segundos entre requisições de fundamentos."
+          : "Muitas requisições no último minuto. Tente novamente em breve.",
+      retryAfterSec: rate.retryAfterSec,
+    });
+  }
+
   try {
     const ticker = String(request.query.ticker || "").toUpperCase().trim();
     const currentPrice = Number(request.query.price) || undefined;
@@ -232,6 +209,25 @@ export default async function handler(request: VercelRequest, response: VercelRe
     if (!ticker) {
       return response.status(400).json({ error: "Forneça ?ticker=XXXX" });
     }
+    if (!TICKER_OK.test(ticker)) {
+      return response.status(400).json({ error: "Ticker inválido" });
+    }
+
+    // Cache por (provider, ticker, price). Hit poupa LLM e devolve mesma resposta
+    // em até 10min — mesmas garantias que /api/ai.
+    const provider = (process.env.AI_PROVIDER || "groq") as string;
+    const key = cacheKey({
+      provider,
+      messages: [{ ticker, currentPrice: currentPrice ?? null }],
+      temperature: 0.4,
+      max_tokens: 1800,
+    });
+    const cached = getCached(key);
+    if (cached) {
+      response.setHeader("X-Cache", "HIT");
+      return response.status(200).json(cached);
+    }
+    response.setHeader("X-Cache", "MISS");
 
     const prompt = buildPrompt(ticker, currentPrice);
     const raw = await callAI(prompt);
@@ -241,7 +237,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     try {
       parsed = JSON.parse(text);
     } catch {
-      console.error("[api/fundamentals] JSON inválido da IA:", text.slice(0, 400));
+      // Não logar payload upstream cru — logs Vercel retêm 30d.
+      console.error("[api/fundamentals] JSON inválido da IA — len=%d, head=%s", text.length, text.slice(0, 80));
       return response.status(502).json({
         error: "IA retornou JSON inválido",
         rawSnippet: text.slice(0, 200),
@@ -259,11 +256,17 @@ export default async function handler(request: VercelRequest, response: VercelRe
       trimestres: Array.isArray(parsed.trimestres) ? parsed.trimestres : [],
     };
 
+    setCached(key, payload);
     return response.status(200).json(payload);
   } catch (error) {
-    console.error("[api/fundamentals] erro:", error);
-    return response.status(500).json({
-      error: error instanceof Error ? error.message : "Erro desconhecido",
-    });
+    if (error instanceof LLMError) {
+      console.error("[api/fundamentals] llm %d %s", error.status, String(error.message).slice(0, 120));
+      // 503 (chave faltando) é erro do server, devolvemos 500 pro cliente.
+      const status = error.status === 503 ? 500 : error.status;
+      return response.status(status).json({ error: error.message });
+    }
+    const msg = error instanceof Error ? error.message : "Erro desconhecido";
+    console.error("[api/fundamentals] erro 500 %s", msg.slice(0, 120));
+    return response.status(500).json({ error: msg });
   }
 }
