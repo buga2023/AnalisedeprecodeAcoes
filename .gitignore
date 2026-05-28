@@ -23,9 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
-# Environment variables
+# Environment variables (.env.example fica versionado como template)
 .env
 .env.*
+!.env.example
 
 # Local Netlify folder
 .netlify

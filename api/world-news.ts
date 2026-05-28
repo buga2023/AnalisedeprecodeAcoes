@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "./_cors";
+import { checkRateLimit } from "./_ratelimit";
 
 /**
  * AGGREGADOR DE NOTÍCIAS GLOBAIS — sem chave, sem custo.
@@ -373,9 +374,19 @@ async function refreshCache(): Promise<WorldNewsResponse> {
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (applyCors(request, response, "GET, OPTIONS")) return;
 
+  // Cron interno do Vercel nao deve consumir cota — identificamos pelo header.
+  const isCronCall = !!request.headers["x-vercel-cron"];
+  if (!isCronCall) {
+    // Cache 2h serve a maioria; refresh manual liberado mas com teto.
+    const rate = checkRateLimit(request, { windowMs: 60_000, max: 30, burstMax: 5, burstWindowMs: 5_000 });
+    if (!rate.allowed) {
+      response.setHeader("Retry-After", String(rate.retryAfterSec));
+      return response.status(429).json({ error: "rate-limited", retryAfterSec: rate.retryAfterSec });
+    }
+  }
+
   try {
     const forceRefresh = String(request.query.refresh || "") === "1";
-    const isCronCall = !!request.headers["x-vercel-cron"]; // Vercel manda esse header em chamadas de cron
 
     if (!forceRefresh && !isCronCall && cache && Date.now() - cache.at < CACHE_TTL_MS) {
       response.setHeader("X-Cache", "HIT");
@@ -387,7 +398,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     response.setHeader("X-Cache", forceRefresh ? "BYPASS" : isCronCall ? "CRON" : "MISS");
     return response.status(200).json(payload);
   } catch (error) {
-    console.error("[api/world-news] erro fatal:", error);
+    const msg = error instanceof Error ? error.message : "";
+    console.error("[api/world-news] erro fatal:", msg.slice(0, 120));
     if (cache) return response.status(200).json(cache.payload);
     return response.status(200).json({
       generatedAt: new Date().toISOString(),

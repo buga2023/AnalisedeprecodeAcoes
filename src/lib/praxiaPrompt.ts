@@ -268,5 +268,51 @@ export const JSON_ONLY_SUFFIX =
   "Responda SOMENTE o JSON valido descrito acima. Sem markdown, sem ```json, sem texto fora do objeto. Voce pode omitir <thinking> nesta resposta.";
 
 /** Sufixo usado por user prompts em MODO CHAT (texto livre + thinking compacto). */
-export const CHAT_OUTPUT_SUFFIX =
-  "Use <thinking>...</thinking> COMPACTO no inicio (NO MAXIMO 3 bullets de uma linha cada, cobrindo: info -> impacto -> acao). O <thinking> sera removido antes de exibir, NAO desperdice tokens nele. Depois a resposta natural ao usuario (2-8 frases), encerrando com o bloco 'Fontes:'.";
+export const CHAT_OUTPUT_SUFFIX = [
+  "MODO CHAT — sobrepoe o reasoning_chain e o output_format do system:",
+  "(1) <thinking>...</thinking> COMPACTO no inicio. Maximo 3 bullets de UMA LINHA cada: INFO+IMPACTO, TICKER da carteira afetado, ACAO. O bloco sera removido antes de exibir — NAO desperdice tokens nele.",
+  "(2) Apos </thinking>, resposta natural em 2-6 frases (nao 8). Direta, sem rodeio.",
+  "(3) Encerre com 'Fontes:' numerado [1] descricao curta — URL.",
+  "IGNORE os exemplos few-shot em <examples> que sao MODO JSON — eles servem so como ancora de estilo de raciocinio.",
+].join(" ");
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Helper opcional pra reduzir o <context_received> a so o que CHEGOU naquela
+ * chamada. Hoje o tag eh estatico no PRAXIA_SYSTEM_PROMPT — esse helper deixa
+ * preparado pra evolucao futura (montar o system prompt por chamada).
+ * ─────────────────────────────────────────────────────────────────────── */
+
+export interface ContextBlocksPresent {
+  carteira?: boolean;
+  perfil?: boolean;
+  metricas?: boolean;
+  macroBR?: boolean;
+  noticiasTicker?: boolean;
+  noticiasGlobais?: boolean;
+}
+
+const BLOCK_DESCRIPTIONS: Record<keyof ContextBlocksPresent, string> = {
+  carteira: "CARTEIRA do usuario (ticker, qty, preco, var%, fundamentos, score)",
+  perfil: "PERFIL (risco low/mid/high, horizonte short/mid/long, interesses div/gro/esg/tec)",
+  metricas: "METRICAS calculadas (Graham VI, score, ROE, ROIC, ROI, P/L, P/VP, DY, Div/EBITDA)",
+  macroBR: "MACRO BR (BCB SGS: SELIC, IPCA, CDI, IGP-M, IBC-Br, Ibovespa)",
+  noticiasTicker: "NOTICIAS por ticker + topicos BR (Google News RSS)",
+  noticiasGlobais: "NOTICIAS GLOBAIS (GDELT + Google News multi-pais + Reddit + BBC, refresh 2h)",
+};
+
+/**
+ * Monta uma versao reduzida do <context_received> listando so os blocos que
+ * realmente chegam na chamada. Use no user prompt quando quiser cortar a
+ * gordura do <context_received> estatico do system prompt.
+ *
+ * Nao eh usado por default (compatibilidade) — ative aos poucos onde o ganho
+ * for relevante (ex.: aiNewsFeed que so manda noticiasGlobais + carteira).
+ */
+export function buildContextReceivedTag(blocks: ContextBlocksPresent): string {
+  const presentes = (Object.keys(blocks) as (keyof ContextBlocksPresent)[])
+    .filter((k) => blocks[k])
+    .map((k) => `  - ${BLOCK_DESCRIPTIONS[k]}`)
+    .join("\n");
+  if (!presentes) return "";
+  return `\n<context_received_actual>\nBlocos efetivamente enviados nesta chamada (ignore os demais listados no system):\n${presentes}\n</context_received_actual>\n`;
+}

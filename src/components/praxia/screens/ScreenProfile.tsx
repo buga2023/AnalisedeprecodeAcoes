@@ -33,6 +33,9 @@ interface ScreenProfileProps {
   onOpenBatchValuation?: () => void;
   onOpenActivity?: () => void;
   onOpenDividends?: () => void;
+  onOpenPrivacy?: () => void;
+  onOpenTerms?: () => void;
+  onOpenDeleteAccount?: () => void;
   onLogout: () => void;
   onClearLocalData: () => void;
 }
@@ -50,6 +53,9 @@ export function ScreenProfile({
   onOpenBatchValuation,
   onOpenActivity,
   onOpenDividends,
+  onOpenPrivacy,
+  onOpenTerms,
+  onOpenDeleteAccount,
   onLogout,
   onClearLocalData,
 }: ScreenProfileProps) {
@@ -320,6 +326,32 @@ export function ScreenProfile({
               {onOpenActivity && (
                 <ToolButton accent={accent} onClick={onOpenActivity} icon={<Icon.activity size={14} color={accent} />}>
                   Histórico de transações
+                </ToolButton>
+              )}
+            </div>
+          </PraxiaCard>
+        )}
+
+        {/* Legal — LGPD + Termos de Uso + Excluir minhas informações.
+            Estes acessos são obrigatórios pela LGPD (Art. 18) e por boa prática
+            antes da Praxia introduzir conta paga / persistência server-side. */}
+        {(onOpenPrivacy || onOpenTerms || onOpenDeleteAccount) && (
+          <PraxiaCard padding={16}>
+            <SettingLabel label="Legal e privacidade" sub="LGPD · Termos · Excluir conta" />
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {onOpenPrivacy && (
+                <ToolButton accent={accent} onClick={onOpenPrivacy} icon={<Icon.shield size={14} color={accent} />}>
+                  Política de privacidade
+                </ToolButton>
+              )}
+              {onOpenTerms && (
+                <ToolButton accent={accent} onClick={onOpenTerms} icon={<Icon.shield size={14} color={accent} />}>
+                  Termos de uso
+                </ToolButton>
+              )}
+              {onOpenDeleteAccount && (
+                <ToolButton accent={accent} onClick={onOpenDeleteAccount} icon={<Icon.shield size={14} color={accent} />}>
+                  Excluir minhas informações
                 </ToolButton>
               )}
             </div>

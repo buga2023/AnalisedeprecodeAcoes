@@ -3,6 +3,7 @@ import { PraxiaTokens, fmt } from "./tokens";
 import { GlassButton } from "./GlassButton";
 import { Icon } from "./Icon";
 import { PraxiaCard } from "./PraxiaCard";
+import { CVMDisclaimerFooter } from "./CVMDisclaimerFooter";
 import { useDividendCalendar } from "@/hooks/useDividendCalendar";
 import { otimizarDividendos, type DividendOptimization } from "@/lib/aiDividends";
 import type { InvestorProfile, Stock } from "@/types/stock";
@@ -364,6 +365,7 @@ export function OptimizeDividendsModal({
                   )}
                 </PraxiaCard>
               ))}
+              <CVMDisclaimerFooter />
             </>
           )}
         </div>

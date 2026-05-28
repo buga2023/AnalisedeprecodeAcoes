@@ -37,8 +37,8 @@ export function DisclaimerBar({
       >
         <Icon.shield size={12} color={T.ink50} />
         <span>
-          <b style={{ color: T.ink70 }}>Sugestão com fonte, não recomendação.</b>{" "}
-          Praxia mostra dados do Yahoo Finance, cálculos do app e citações — a decisão é sua.
+          <b style={{ color: T.ink70 }}>Conteúdo educacional, não recomendação.</b>{" "}
+          Praxia mostra dados do Yahoo Finance, cálculos do app e citações — a decisão é sua. (Res. CVM 14)
         </span>
       </div>
     );
@@ -81,7 +81,7 @@ export function DisclaimerBar({
             letterSpacing: -0.1,
           }}
         >
-          Sugestões com fonte — não é recomendação.
+          Conteúdo educacional — não é recomendação.
         </div>
         <div
           style={{
@@ -92,7 +92,7 @@ export function DisclaimerBar({
             lineHeight: 1.45,
           }}
         >
-          Todos os dados vêm com origem (Yahoo Finance, cálculo do app, perfil seu, ou link de RI). A decisão final é sempre sua. Praxia é simulação local de paper trading.
+          Todos os dados vêm com origem (Yahoo Finance, cálculo do app, perfil seu, link de RI). A decisão de investir é sua responsabilidade. Não constitui recomendação ou consultoria de valores mobiliários (Res. CVM 14). Praxia é simulação local de paper trading.
         </div>
       </div>
     </div>

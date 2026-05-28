@@ -3,6 +3,7 @@ import { LoginScreen } from "@/components/LoginScreen";
 import { AppShell } from "@/components/praxia/AppShell";
 import { BottomNav, type NavTab } from "@/components/praxia/BottomNav";
 import { FloatingPraButton } from "@/components/praxia/FloatingPraButton";
+import { CookieConsentBanner } from "@/components/praxia/CookieConsentBanner";
 import { ScreenOnboarding } from "@/components/praxia/screens/ScreenOnboarding";
 import { ScreenOnboardingB } from "@/components/praxia/screens/ScreenOnboardingB";
 import { ScreenQuiz } from "@/components/praxia/screens/ScreenQuiz";
@@ -42,6 +43,12 @@ const ScreenAnalysis = lazy(() =>
 const ScreenDividends = lazy(() =>
   import("@/components/praxia/screens/ScreenDividends").then((m) => ({ default: m.ScreenDividends }))
 );
+const ScreenLegalDoc = lazy(() =>
+  import("@/components/praxia/screens/ScreenLegalDoc").then((m) => ({ default: m.ScreenLegalDoc }))
+);
+const ScreenDeleteAccount = lazy(() =>
+  import("@/components/praxia/screens/ScreenDeleteAccount").then((m) => ({ default: m.ScreenDeleteAccount }))
+);
 const ChatSheet = lazy(() =>
   import("@/components/praxia/ChatSheet").then((m) => ({ default: m.ChatSheet }))
 );
@@ -57,6 +64,7 @@ import { useTransactions } from "@/hooks/useTransactions";
 import { useUIPreferences } from "@/hooks/useUIPreferences";
 import { useAIProvider } from "@/hooks/useAIProvider";
 import { useAlerts } from "@/hooks/useAlerts";
+import { useAuth } from "@/hooks/useAuth";
 import { useDividendCalendar } from "@/hooks/useDividendCalendar";
 import { totalPortfolioValue } from "@/lib/portfolio";
 import type {
@@ -66,7 +74,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends";
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "privacy" | "terms" | "delete-account";
 
 function ScreenFallback() {
   return (
@@ -327,6 +335,9 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onOpenBatchValuation={() => setScreen("batch")}
           onOpenActivity={() => setScreen("activity")}
           onOpenDividends={() => setScreen("dividends")}
+          onOpenPrivacy={() => setScreen("privacy")}
+          onOpenTerms={() => setScreen("terms")}
+          onOpenDeleteAccount={() => setScreen("delete-account")}
           onLogout={onLogout}
           onClearLocalData={clearAllLocal}
         />
@@ -395,6 +406,25 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             onOpenStock={openStock}
             onOpenAlerts={() => setScreen("alerts")}
             onOpenCompare={(ticker) => addToCompareAndOpen(ticker)}
+          />
+        )}
+
+        {screen === "privacy" && (
+          <ScreenLegalDoc accent={accent} doc="privacy" onBack={() => setScreen("profile")} />
+        )}
+
+        {screen === "terms" && (
+          <ScreenLegalDoc accent={accent} doc="terms" onBack={() => setScreen("profile")} />
+        )}
+
+        {screen === "delete-account" && (
+          <ScreenDeleteAccount
+            accent={accent}
+            onBack={() => setScreen("profile")}
+            onErased={() => {
+              clearAllLocal();
+              onLogout();
+            }}
           />
         )}
 
@@ -519,24 +549,58 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           />
         </Suspense>
       )}
+
+      <CookieConsentBanner
+        accent={accent}
+        onOpenPrivacy={() => setScreen("privacy")}
+      />
     </AppShell>
   );
 }
 
 function App() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const { user, loading: authLoading, signOut } = useAuth();
   const [bootStep, setBootStep] = useState<"onboardingA" | "onboardingB" | "login" | "app">(() => {
     const hasProfile = !!localStorage.getItem("praxia-investor-profile");
     if (hasProfile) return "login";
     return "onboardingA";
   });
 
-  if (authenticated || bootStep === "app") {
+  // Quando a sessao Supabase chega, salta direto pra app.
+  useEffect(() => {
+    if (user && bootStep !== "app") setBootStep("app");
+  }, [user, bootStep]);
+
+  // Loading inicial — evita flash do LoginScreen enquanto o supabase-js
+  // recupera a sessao do localStorage.
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          height: "100dvh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#0a0a10",
+          color: "rgba(244,236,223,0.45)",
+          fontFamily: '"Manrope", sans-serif',
+          fontSize: 12,
+          letterSpacing: 0.4,
+        }}
+      >
+        Carregando…
+      </div>
+    );
+  }
+
+  if (user) {
+    // Username friendly: parte antes do @ no email.
+    const friendly = user.email ? user.email.split("@")[0] : "voce";
     return (
       <PraxiaApp
-        username="admin"
-        onLogout={() => {
-          setAuthenticated(false);
+        username={friendly}
+        onLogout={async () => {
+          await signOut();
           setBootStep("login");
         }}
       />
@@ -555,19 +619,14 @@ function App() {
   if (bootStep === "onboardingB") {
     return (
       <ScreenOnboardingB
-        onCreateAccount={() => setBootStep("app")}
+        onCreateAccount={() => setBootStep("login")}
         onLogin={() => setBootStep("login")}
       />
     );
   }
 
   return (
-    <LoginScreen
-      onLogin={() => {
-        setAuthenticated(true);
-        setBootStep("app");
-      }}
-    />
+    <LoginScreen />
   );
 }
 

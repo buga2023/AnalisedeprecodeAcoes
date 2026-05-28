@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { applyCors } from './_cors';
+import { checkRateLimit } from './_ratelimit';
 
 // Cache em memória por instância da função
 let cachedData: any = null;
@@ -11,6 +12,14 @@ export default async function handler(
   response: VercelResponse
 ) {
   if (applyCors(request, response, 'GET, OPTIONS')) return;
+
+  // Polling do widget macro do ScreenHome bate aqui a cada minuto; teto liberal
+  // pra UX legitima mas barra scraping em massa.
+  const rate = checkRateLimit(request, { windowMs: 60_000, max: 60, burstMax: 10, burstWindowMs: 5_000 });
+  if (!rate.allowed) {
+    response.setHeader('Retry-After', String(rate.retryAfterSec));
+    return response.status(429).json({ error: 'rate-limited', retryAfterSec: rate.retryAfterSec });
+  }
 
   try {
 
@@ -33,7 +42,8 @@ export default async function handler(
         return response.status(200).json(mappedData);
       }
     } catch (e) {
-      console.warn("Yahoo Market falhou:", e);
+      const msg = e instanceof Error ? e.message : "";
+      console.warn("[api/market] Yahoo falhou:", msg.slice(0, 120));
     }
 
     // 2. Fallback AwesomeAPI com Cache
@@ -73,7 +83,8 @@ export default async function handler(
       clearTimeout(timeoutId);
     }
   } catch (error) {
-    console.error("Erro fatal no Market Proxy:", error);
+    const msg = error instanceof Error ? error.message : "";
+    console.error("[api/market] erro fatal:", msg.slice(0, 120));
     return response.status(200).json(cachedData || {}); // Nunca retornar 500, prefira vazio
   }
 }

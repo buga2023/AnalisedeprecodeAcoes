@@ -3,35 +3,41 @@ import { PraxiaTokens } from "@/components/praxia/tokens";
 import { PraxiaBackground } from "@/components/praxia/PraxiaBackground";
 import { PraxiaLogo } from "@/components/praxia/PraxiaLogo";
 import { Icon } from "@/components/praxia/Icon";
+import { useAuth } from "@/hooks/useAuth";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 interface LoginScreenProps {
-  onLogin: () => void;
+  /** Notificado quando a sessao chega (via App.tsx via useAuth). Opcional — App.tsx pode escutar useAuth direto. */
+  onLogin?: () => void;
 }
 
-export function LoginScreen({ onLogin }: LoginScreenProps) {
+type Step = "input" | "sent";
+
+export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
   const T = PraxiaTokens;
   const accent = T.accent;
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
+  const { signInWithMagicLink } = useAuth();
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState<Step>("input");
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || !email.trim()) return;
     setSubmitting(true);
     setError("");
-    // Lightweight artificial delay so the user feels the action register.
-    window.setTimeout(() => {
-      if (username.trim() === "admin" && password === "1234") {
-        onLogin();
-      } else {
-        setError("Usuário ou senha incorretos.");
-        setSubmitting(false);
-      }
-    }, 280);
+
+    const result = await signInWithMagicLink(email);
+    if (result.ok) {
+      setStep("sent");
+    } else {
+      setError(result.error);
+    }
+    setSubmitting(false);
   }
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   return (
     <div
@@ -56,7 +62,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       >
         <PraxiaBackground accent={accent} />
 
-        {/* Ambient glow under the form, anchored to the bottom for depth. */}
         <div
           style={{
             position: "absolute",
@@ -114,13 +119,24 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 letterSpacing: -1,
               }}
             >
-              Bem-vindo{" "}
-              <span style={{ fontStyle: "italic", color: T.gold }}>
-                de volta
-              </span>
-              .
+              {step === "input" ? (
+                <>
+                  Bem-vindo{" "}
+                  <span style={{ fontStyle: "italic", color: T.gold }}>
+                    de volta
+                  </span>
+                  .
+                </>
+              ) : (
+                <>
+                  Link{" "}
+                  <span style={{ fontStyle: "italic", color: T.gold }}>
+                    enviado
+                  </span>
+                  .
+                </>
+              )}
             </h1>
-            {/* filete dourado editorial */}
             <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 32, height: 1, background: T.gold }} />
               <span
@@ -142,150 +158,179 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 maxWidth: 320,
               }}
             >
-              Acesse sua carteira, converse com a Pra e veja a análise calibrada para o seu perfil.
+              {step === "input"
+                ? "Digite seu email — enviamos um link de acesso seguro. Sem senha, sem cadastro extra."
+                : `Verifique ${email}. Clique no link da Praxia para entrar — ele expira em 1 hora.`}
             </p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
-            <Field
-              label="Usuário"
-              icon={<Icon.profile size={16} color={T.ink50} />}
-              input={
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  value={username}
-                  placeholder="admin"
-                  autoFocus
-                  autoComplete="username"
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    if (error) setError("");
-                  }}
-                  style={inputStyle()}
-                />
-              }
-            />
-
-            <Field
-              label="Senha"
-              icon={<Icon.shield size={16} color={T.ink50} />}
-              trailing={
-                <button
-                  type="button"
-                  onClick={() => setShowPwd((v) => !v)}
+          {step === "input" && (
+            <>
+              {!isSupabaseConfigured && (
+                <div
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    color: T.ink50,
-                    cursor: "pointer",
-                    fontFamily: T.mono,
-                    fontSize: 10.5,
-                    letterSpacing: 0.6,
-                    textTransform: "uppercase",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    background: "rgba(255,200,92,0.10)",
+                    border: "0.5px solid rgba(255,200,92,0.32)",
+                    color: T.warn,
+                    fontFamily: T.body,
+                    fontSize: 11.5,
+                    lineHeight: 1.4,
                   }}
                 >
-                  {showPwd ? "Ocultar" : "Mostrar"}
-                </button>
-              }
-              input={
-                <input
-                  id="password"
-                  name="password"
-                  type={showPwd ? "text" : "password"}
-                  value={password}
-                  placeholder="••••"
-                  autoComplete="current-password"
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (error) setError("");
-                  }}
-                  style={inputStyle()}
+                  Auth ainda não configurado neste navegador. Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> em <code>.env.local</code>.
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
+                <Field
+                  label="Email"
+                  icon={<Icon.profile size={16} color={T.ink50} />}
+                  input={
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={email}
+                      placeholder="voce@email.com"
+                      autoFocus
+                      autoComplete="email"
+                      inputMode="email"
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (error) setError("");
+                      }}
+                      style={inputStyle()}
+                    />
+                  }
                 />
-              }
-            />
 
-            {error && (
-              <div
-                style={{
-                  marginTop: 2,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  background: "rgba(255,107,129,0.10)",
-                  border: "0.5px solid rgba(255,107,129,0.32)",
-                  color: T.down,
-                  fontFamily: T.body,
-                  fontSize: 12.5,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <Icon.shield size={14} color={T.down} />
-                {error}
+                {error && (
+                  <div
+                    style={{
+                      marginTop: 2,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "rgba(255,107,129,0.10)",
+                      border: "0.5px solid rgba(255,107,129,0.32)",
+                      color: T.down,
+                      fontFamily: T.body,
+                      fontSize: 12.5,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <Icon.shield size={14} color={T.down} />
+                    {error}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <button
-            type="submit"
-            disabled={submitting || !username.trim() || !password}
-            style={{
-              marginTop: 10,
-              height: 54,
-              borderRadius: 999,
-              background:
-                submitting || !username.trim() || !password
-                  ? "rgba(255,255,255,0.08)"
-                  : accent,
-              color:
-                submitting || !username.trim() || !password
-                  ? "rgba(255,255,255,0.4)"
-                  : "white",
-              border: "none",
-              fontFamily: T.display,
-              fontWeight: 600,
-              fontSize: 15,
-              cursor:
-                submitting || !username.trim() || !password ? "not-allowed" : "pointer",
-              boxShadow:
-                submitting || !username.trim() || !password ? "none" : `0 16px 36px ${accent}55`,
-              letterSpacing: -0.1,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-            }}
-          >
-            {submitting ? "Entrando…" : "Entrar"}
-            {!submitting && username.trim() && password && (
-              <span
+              <button
+                type="submit"
+                disabled={submitting || !emailValid || !isSupabaseConfigured}
                 style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: 13,
-                  background: "rgba(255,255,255,0.18)",
+                  marginTop: 10,
+                  height: 54,
+                  borderRadius: 999,
+                  background:
+                    submitting || !emailValid || !isSupabaseConfigured
+                      ? "rgba(255,255,255,0.08)"
+                      : accent,
+                  color:
+                    submitting || !emailValid || !isSupabaseConfigured
+                      ? "rgba(255,255,255,0.4)"
+                      : "white",
+                  border: "none",
+                  fontFamily: T.display,
+                  fontWeight: 600,
+                  fontSize: 15,
+                  cursor:
+                    submitting || !emailValid || !isSupabaseConfigured
+                      ? "not-allowed"
+                      : "pointer",
+                  boxShadow:
+                    submitting || !emailValid || !isSupabaseConfigured
+                      ? "none"
+                      : `0 16px 36px ${accent}55`,
+                  letterSpacing: -0.1,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: 10,
                 }}
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M5 12h14M13 5l7 7-7 7" />
-                </svg>
-              </span>
-            )}
-          </button>
+                {submitting ? "Enviando…" : "Enviar link de acesso"}
+                {!submitting && emailValid && isSupabaseConfigured && (
+                  <span
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      background: "rgba(255,255,255,0.18)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M5 12h14M13 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                )}
+              </button>
+            </>
+          )}
+
+          {step === "sent" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+              <div
+                style={{
+                  padding: "16px 16px",
+                  borderRadius: 14,
+                  background: `${accent}1f`,
+                  border: `0.5px solid ${accent}55`,
+                  fontFamily: T.body,
+                  fontSize: 13,
+                  color: T.ink,
+                  lineHeight: 1.5,
+                }}
+              >
+                Link de acesso enviado para <b>{email}</b>. Abra do mesmo navegador pra voltar aqui automaticamente.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("input");
+                  setEmail("");
+                }}
+                style={{
+                  height: 44,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.05)",
+                  color: T.ink70,
+                  border: `0.5px solid ${T.hairline}`,
+                  fontFamily: T.body,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Usar outro email
+              </button>
+            </div>
+          )}
 
           <div
             style={{
@@ -298,7 +343,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               textAlign: "center",
             }}
           >
-            paper trading · simulação local
+            paper trading · sem recomendação personalizada
           </div>
         </form>
       </div>

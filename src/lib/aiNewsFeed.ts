@@ -3,6 +3,7 @@ import type { WorldNewsItem } from "./context";
 import {
   PRAXIA_SYSTEM_PROMPT,
   JSON_ONLY_SUFFIX,
+  buildContextReceivedTag,
   describeProfileLine,
   describePortfolioLine,
 } from "./praxiaPrompt";
@@ -164,7 +165,11 @@ export async function analisarNoticiaParaCarteira(
     : `\n  "categoria": "guerra" | "queda-acoes" | "ma-corporativo" | "macro" | "setor" | "outro",`;
 
   const userPrompt = `MODO DE OUTPUT: JSON estruturado (analise por noticia individual).
-
+${buildContextReceivedTag({
+  carteira: stocks.length > 0,
+  perfil: !!profile,
+  noticiasGlobais: true,
+})}
 NOTICIA PARA ANALISAR:
   Manchete: ${item.titulo}
   Fonte:    ${item.fonte || "(nao informada)"}

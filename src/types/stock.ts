@@ -160,6 +160,57 @@ export interface PriceAlert {
   triggerPrice?: number;
 }
 
+/* ─── Praxia: billing (Mercado Pago Subscriptions) ──────────────────────── */
+
+export type Plan = "free" | "pro";
+
+export type SubscriptionStatus =
+  | "pending"
+  | "active"
+  | "paused"
+  | "cancelled"
+  | "past_due";
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  mpPreapprovalId: string | null;
+  plan: "pro";
+  status: SubscriptionStatus;
+  amountBRL: number;
+  startedAt: string | null;
+  currentPeriodEnd: string | null;
+  cancelledAt: string | null;
+}
+
+/** Identificadores estaveis das features que consomem cota. */
+export type PaywalledFeature =
+  | "ai-analysis"
+  | "portfolio-insights"
+  | "compare"
+  | "digest"
+  | "optimize-dividends"
+  | "screener"
+  | "classify-news"
+  | "fundamentals-history";
+
+export interface UsageThisMonth {
+  /** Soma de count de TODAS as features no mes corrente (YYYY-MM). */
+  total: number;
+  /** Map feature -> count. Ausencia = 0. */
+  byFeature: Partial<Record<PaywalledFeature, number>>;
+  /** Mes referenciado, formato "YYYY-MM" (UTC). */
+  month: string;
+}
+
+/** Erro lancado pelo client quando uma chamada IA bate o paywall (HTTP 402). */
+export interface PaywallRequiredPayload {
+  feature: PaywalledFeature;
+  currentUsage: number;
+  limit: number;
+  plan: Plan;
+}
+
 /* ─── Praxia: weekly digest (Fase 6) ────────────────────────────────────── */
 
 /**

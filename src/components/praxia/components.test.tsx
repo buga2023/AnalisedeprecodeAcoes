@@ -136,13 +136,16 @@ describe("PraMark", () => {
 });
 
 describe("DisclaimerBar", () => {
-  it("variant compact mostra texto curto", () => {
+  it("variant compact mostra texto curto com referência CVM 14", () => {
     render(<DisclaimerBar />);
-    expect(screen.getByText(/Sugestões com fonte/)).toBeInTheDocument();
+    // Texto principal mudou para conformidade CVM Res. 14 (Camada 4 LGPD).
+    expect(screen.getByText(/Conteúdo educacional — não é recomendação/)).toBeInTheDocument();
+    expect(screen.getByText(/Res\. CVM 14/)).toBeInTheDocument();
   });
-  it("variant inline mostra outro texto", () => {
+  it("variant inline mostra disclaimer educacional + Res. CVM 14", () => {
     render(<DisclaimerBar variant="inline" />);
-    expect(screen.getByText(/Sugestão com fonte/)).toBeInTheDocument();
+    expect(screen.getByText(/Conteúdo educacional, não recomendação/)).toBeInTheDocument();
+    expect(screen.getByText(/Res\. CVM 14/)).toBeInTheDocument();
   });
 });
 

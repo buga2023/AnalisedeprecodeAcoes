@@ -286,3 +286,63 @@ Se preferir outra ordem, troque livremente — todas as 3 opções são independ
 6. **`npm run build` deve passar** após cada fase — baseline: 0 erros novos
 7. **Features com IA**: texto começa "Pelo seu perfil…" + citações `[N]`
 8. **Qualquer feature com `Transaction`**: log alimenta ScreenActivity
+9. **Provider padrão: Groq + frugalidade de tokens** — Praxia roda em free tier. Antes de subir `max_tokens`, mexer em prompt ou criar nova capacidade IA, pensar em custo: prompt compacto, `response_format` estrito, cache TTL+signature como primeira defesa, nunca empurrar payload bruto pra LLM (envia ID + métricas, não JSON inteiro). Adicionado em 2026-05-29.
+
+---
+
+## 10. Sessão 2026-05-29 — Otimização IA + MVP Fase 1 (auth + Supabase + LGPD)
+
+### 10.1 Otimização IA "funcionar melhor fazendo menos" (Fases A–F do plano `shiny-weaving-engelbart.md`)
+
+Reduzir tokens/chamadas LLM ~30–45% sem perda de qualidade. Tudo entregue:
+
+| Fase | O que entrou |
+|---|---|
+| **A** | `max_tokens` 2048→1200 em `ai.ts`; chat 1400→900 em `usePraChat`. `SOURCE_AND_PROFILE_RULES` (24 linhas) → `RULES_REMINDER` (1 linha). Few-shots: 1 detalhado (GUERRA+PETR4) + 2 enxutos (SELIC, M&A). **NOVO** `src/lib/transmissionChains.ts` (chains 5-8 injetadas sob demanda via keyword). |
+| **D + C.4** | **NOVO** `src/lib/justificativaTemplate.ts` (Graham/Score/MoS deterministicamente; IA só complemento qualitativo). `portfolioInsightsUtils.computePortfolioSentiment` (heurística por média de score). `aiNewsFeed.classifyCategoriaByTitle` (classifier por keyword omite campo do schema da IA quando bate). `CHAT_OUTPUT_SUFFIX` pede thinking com 3 bullets max. |
+| **B** | Signature em `stocks-ai-analysis:{TICKER}` virou `{TICKER}|s{score}|r{roe5pp}|d{debt0.5}|p{price1dec}`. `compararAcoesComIA` ganhou cache 2h. djb2 → djb2+FNV-1a (64 bits). |
+| **C** | `usePraChat`: `MAX_HISTORY=30` + truncamento FIFO. `buildChatWindow` com sliding window: >10 turns vira resumo heurístico (tickers + 4 substantivos) + últimas 6 mensagens. `chatContextMemo` memoizado por hash. `useUIPreferences.aiVerbosity`. |
+| **F** | **NOVO** `src/lib/aiTelemetry.ts`: `recordCall`, `recordHit`, `getStats`, `clearStats`, `clearCacheByKind`, `checkRateLimit` (8 req/60s). Cabeado em `ai.ts:callAIServerless`, `usePraChat`, `aiNews.ts`, `aiNewsFeed.ts`, `StockAIAnalysisSection`, `PortfolioInsightsContent`. Card "Uso de IA" em `ScreenProfile` com 3 stat boxes + 4 botões de cache clear granular. |
+| **E** | `CHAT_OUTPUT_SUFFIX` condensa instruções de reasoning + ignora `<examples>` JSON em modo chat. **NOVO** `buildContextReceivedTag(blocks)` helper opcional, cabeado em `aiNewsFeed.ts`. |
+
+### 10.2 MVP Fase 1 — Auth real + persistência server-side + LGPD/CVM
+
+Tudo entregue. Stack: **Supabase** (auth magic-link + Postgres com RLS) + **Mercado Pago** previsto pra 1.6.
+
+| Sub | O que entrou |
+|---|---|
+| **1.1** | `@supabase/supabase-js` instalado (precisa `NODE_OPTIONS=--use-system-ca` por Kaspersky MITM). **NOVOS** `src/lib/supabase.ts` (client singleton), `src/lib/supabaseSchema.ts` (tipos das 4 tabelas), `supabase/migrations/001_initial.sql` (`profiles`, `portfolio_stocks`, `transactions`, `preferences` + RLS + triggers + auto-criação no signup), `.env.example`. |
+| **1.2** | **NOVO** `src/hooks/useAuth.ts` (`{user,session,loading,isAuthenticated,signInWithMagicLink,signOut}` + onAuthStateChange). `LoginScreen.tsx` reescrito (email único + magic link, 2 steps `input`→`sent`, mantém visual editorial). `App.tsx` plugado com loading state. Username vem do email. |
+| **1.3** | **NOVO** `src/lib/supabaseSync.ts` (helpers genéricos por tabela). `useStockQuotes` sync on login + write-through em add/sell/remove + migração one-time localStorage→Postgres. |
+| **1.4** | Mesmo padrão em `useInvestorProfile`, `useTransactions`, `useUIPreferences`. `useTransactions.makeId` agora UUID v4 (schema Supabase é uuid). |
+| **1.5** | `api/delete-account.ts` (CORS + rate-limit + Bearer JWT + cascade delete 4 tabelas + `admin.deleteUser` + 207 partial). `ScreenLegalDoc.tsx` (privacy/terms). `ScreenDeleteAccount.tsx` (LGPD Art. 18). `CookieConsentBanner.tsx`. `App.tsx` roteia `privacy/terms/delete-account`. **Atualizei `lib/legal.ts`** pra refletir Supabase como processador (LGPD §1, §2, §4, §6). `CVM_DISCLAIMER` cita Resolução CVM 14. |
+
+### 10.3 Decisões técnicas dignas de memória
+
+- **Generic `<Database>` do supabase-js v2.106+** exige shape `__InternalSupabase` que só `supabase gen types` produz. MVP usa client sem generic, tipos locais aplicados nos helpers de `supabaseSync.ts`. Sem perda de safety nas chamadas externas.
+- **`tsconfig.app.json`**: `"ignoreDeprecations"` aceita até `"5.0"` em TS 5.9 (não `"6.0"`).
+- **`useStockQuotes` mutação em closure** dentro de `setStocks((prev) => ...)`: refatorada pra calcular fora do callback — TS não conseguia narrow.
+
+### 10.4 Pendentes pro MVP viável (próxima sessão)
+
+| # | Item | Esforço | Pré-requisito |
+|---|---|---|---|
+| **1.6** | **Billing Mercado Pago Subscriptions** — Edge Function pra criar subscription, webhook de status (`payment.created`/`payment.approved`/`payment.cancelled`), tabela `plan` em `profiles` já existe, paywall em features Pro. | 2-3 dias | Conta MP empresarial/MEI ativa (3 dias úteis pra abrir) |
+| **1.7** | **Landing 1 página** — HTML estático em `landing/` (sem dep nova) com Hero + 3 features + pricing Free/Pro + CTA. Deployável separado do app. | 1 sessão | Domínio registrado |
+| **c** | **Polir Fase 1 (ScreenAnalysis)** — já existe em `src/components/praxia/screens/ScreenAnalysis.tsx` (PortfolioScoreHero + mini metrics + insights autoLoad + movers + best scores + alocação). Falta: tooltips das métricas, CTAs concretos pós-análise, refinar copy. | 1 sessão | nenhum |
+| **–** | **Sentry** — front + backend, telemetria de erro. Free tier basta. | 4-6h | conta Sentry |
+| **–** | **Termos de uso revisão jurídica** | externo | advogado |
+
+### 10.5 Como retomar
+
+1. Ler `~/.claude/plans/shiny-weaving-engelbart.md` (plano IA — entregue).
+2. Ler esta seção 10 + seção 8 (arquivos críticos).
+3. Confirmar estado das envs locais (`.env.local` deve ter `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`).
+4. `npm run dev` — testar magic link de ponta a ponta antes de seguir.
+5. Próxima decisão: **1.6 (billing)** ou **polir Fase 1 (ScreenAnalysis) + 1.7 (landing)**.
+
+### 10.6 Build status final desta sessão
+
+- `npx tsc --noEmit --project tsconfig.app.json`: ✅ 0 erros
+- `npm run build`: ✅ ~17–25s
+- Warning de chunk index >500KB (569KB) — supabase-js adicionou ~50KB. Otimização (manualChunks) é polish, não bloqueia MVP.

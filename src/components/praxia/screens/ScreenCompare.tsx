@@ -7,6 +7,7 @@ import { Icon } from "../Icon";
 import { SectionHeader } from "../SectionHeader";
 import { PraMark } from "../PraMark";
 import { CompareTable } from "../CompareTable";
+import { CVMDisclaimerFooter } from "../CVMDisclaimerFooter";
 import type { InvestorProfile, Stock } from "@/types/stock";
 import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators";
 import {
@@ -432,6 +433,7 @@ export function ScreenCompare({
                 );
               })}
             </div>
+            <CVMDisclaimerFooter />
           </>
         )}
       </div>

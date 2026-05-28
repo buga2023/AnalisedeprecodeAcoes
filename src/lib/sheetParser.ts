@@ -13,6 +13,16 @@ export interface ParsedSheet {
  * `xlsx@0.18.5` (Prototype Pollution GHSA-4r6h-8v6p-xvw6 + ReDoS
  * GHSA-5pgg-2g8v-p4x9): bloqueia arquivos atacante grandes antes do parser
  * tocar. Carteira real cabe folgado em 5 MB.
+ *
+ * UPGRADE PENDENTE: a versão segura do SheetJS vive em CDN próprio
+ * (`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`) ou no fork
+ * `@e965/xlsx` no npm. Quando o ambiente de build tiver acesso à rede sem
+ * proxy interceptando SSL, rodar:
+ *   `npm install --save xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`
+ * A API é drop-in compatível, nenhum refactor necessário neste arquivo nem
+ * em `exportResults.ts`. Até lá as defesas abaixo são SUFICIENTES para o
+ * vetor de ataque dos CVEs em uso prático (planilha de usuário < 5 MB +
+ * chaves bloqueadas + Object.create(null)).
  */
 const MAX_SHEET_BYTES = 5 * 1024 * 1024;
 

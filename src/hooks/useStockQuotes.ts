@@ -5,6 +5,13 @@ import type { BrapiQuoteResult } from "@/lib/api";
 import { calculateGrahamValue, calculateROIC, calculateStockScore } from "@/lib/calculators";
 import { detectMarket, detectSector, brandColor } from "@/lib/stockMeta";
 import { fetchFundamentalsFromAI, mergeAIFundamentalsIntoStock } from "@/lib/fundamentals";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  bulkUploadPortfolio,
+  deletePortfolioStock,
+  fetchPortfolioFromServer,
+  upsertPortfolioStock,
+} from "@/lib/supabaseSync";
 
 const STORAGE_KEY = "stocks-ai-portfolio";
 const TOKEN_KEY = "stocks-ai-brapi-token";
@@ -124,6 +131,7 @@ function needsAIFundamentals(stock: Stock): boolean {
 }
 
 export function useStockQuotes() {
+  const { user } = useAuth();
   const [stocks, setStocks] = useState<Stock[]>(loadStocksFromStorage);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -131,10 +139,104 @@ export function useStockQuotes() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Quais tickers já tentamos fazer fallback IA nesta sessão (evita loop).
   const aiAttemptedRef = useRef<Set<string>>(new Set());
+  // Marca se ja sincronizou com o servidor neste user (evita re-fetch).
+  const syncedUserRef = useRef<string | null>(null);
 
   useEffect(() => {
     saveStocksToStorage(stocks);
   }, [stocks]);
+
+  /**
+   * Sync inicial com Supabase quando user autentica.
+   * - Se servidor tem dados: substitui localStorage (servidor eh fonte da verdade).
+   * - Se servidor vazio e localStorage tem dados: migracao one-time (sobe tudo).
+   * - Refresca cotacoes em seguida (BrAPI) pra dados frescos.
+   */
+  useEffect(() => {
+    if (!user) return;
+    if (syncedUserRef.current === user.id) return; // ja sincronizou
+
+    let cancelled = false;
+    (async () => {
+      const remote = await fetchPortfolioFromServer(user.id);
+      if (cancelled) return;
+      if (remote === null) return; // erro ou nao configurado — mantem localStorage
+
+      syncedUserRef.current = user.id;
+
+      if (remote.length === 0) {
+        // Migracao one-time: localStorage tem stocks pre-auth -> sobe.
+        const local = loadStocksFromStorage();
+        if (local.length > 0) {
+          await bulkUploadPortfolio(user.id, local);
+          // Mantem o local — proximo poll completa fundamentos.
+          return;
+        }
+        // Servidor vazio + localStorage vazio: nada a fazer.
+        setStocks([]);
+        return;
+      }
+
+      // Servidor tem dados — busca cotacoes frescas pra reconstruir os Stocks.
+      try {
+        const tickers = remote.map((s) => s.ticker);
+        const quotes = await fetchMultipleQuotes(tickers);
+        const quoteMap = new Map(quotes.map((q) => [q.symbol, q]));
+        const restored: Stock[] = remote.map((r) => {
+          const quote = quoteMap.get(r.ticker);
+          if (quote) {
+            return { ...mapQuoteToStock(quote, r.cost, r.quantity), name: r.name || quote.shortName || r.ticker };
+          }
+          // Sem cotacao no momento — mantem so o que vem do banco.
+          return {
+            ticker: r.ticker,
+            name: r.name || r.ticker,
+            sector: r.sector,
+            quantity: r.quantity,
+            cost: r.cost,
+            price: 0,
+            lpa: 0,
+            vpa: 0,
+            roe: 0,
+            debtToEbitda: 0,
+            change: 0,
+            changePercent: 0,
+            lastUpdated: new Date().toISOString(),
+            score: 0,
+            scoreBreakdown: { priceScore: 0, profitabilityScore: 0, healthScore: 0, dividendScore: 0, valuationScore: 0 },
+            isFavorite: false,
+            pl: 0,
+            pvp: 0,
+            dividendYield: 0,
+            evEbitda: 0,
+            netMargin: 0,
+            ebitdaMargin: 0,
+            roic: 0,
+            grahamValue: 0,
+            marginOfSafety: 0,
+            market: detectMarket(r.ticker),
+            brandColor: brandColor(r.ticker),
+          } as Stock;
+        });
+        if (!cancelled) {
+          setStocks(restored);
+          setLastRefreshed(new Date());
+        }
+      } catch {
+        // Falha de cotacao nao bloqueia — mantem o que veio do banco.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // user.id muda em troca de usuario.
+  }, [user]);
+
+  // Quando user faz logout, reseta o flag pra sync rodar no proximo login.
+  useEffect(() => {
+    if (!user) syncedUserRef.current = null;
+  }, [user]);
 
   /**
    * Para cada stock com fundamentos zerados, chama /api/fundamentals (IA) e
@@ -236,18 +338,33 @@ export function useStockQuotes() {
         });
         setLastRefreshed(new Date());
 
+        // Write-through Supabase — fire-and-forget.
+        if (user) {
+          void upsertPortfolioStock(user.id, {
+            ticker: newStock.ticker,
+            name: newStock.name,
+            sector: newStock.sector,
+            quantity: newStock.quantity,
+            cost: newStock.cost,
+          });
+        }
+
         return newStock;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao buscar acao.");
         return null;
       }
     },
-    []
+    [user]
   );
 
-  const removeStock = useCallback((ticker: string) => {
-    setStocks((prev) => prev.filter((s) => s.ticker !== ticker));
-  }, []);
+  const removeStock = useCallback(
+    (ticker: string) => {
+      setStocks((prev) => prev.filter((s) => s.ticker !== ticker));
+      if (user) void deletePortfolioStock(user.id, ticker);
+    },
+    [user]
+  );
 
   const toggleFavorite = useCallback((ticker: string) => {
     setStocks((prev) =>
@@ -276,15 +393,23 @@ export function useStockQuotes() {
       if (type === "buy") {
         const existing = stocks.find((s) => s.ticker.toUpperCase() === ticker.toUpperCase());
         if (existing) {
+          // Calcula fora do setState pra TS conseguir narrow.
+          const newQty = (existing.quantity || 0) + shares;
+          const totalCost = (existing.cost || 0) * (existing.quantity || 0) + price * shares;
+          const newCost = totalCost / newQty;
+          const nextStock: Stock = { ...existing, quantity: newQty, cost: newCost };
           setStocks((prev) =>
-            prev.map((s) => {
-              if (s.ticker !== existing.ticker) return s;
-              const newQty = (s.quantity || 0) + shares;
-              const totalCost = (s.cost || 0) * (s.quantity || 0) + price * shares;
-              const newCost = totalCost / newQty;
-              return { ...s, quantity: newQty, cost: newCost };
-            })
+            prev.map((s) => (s.ticker === existing.ticker ? nextStock : s))
           );
+          if (user) {
+            void upsertPortfolioStock(user.id, {
+              ticker: nextStock.ticker,
+              name: nextStock.name,
+              sector: nextStock.sector,
+              quantity: nextStock.quantity,
+              cost: nextStock.cost,
+            });
+          }
           return true;
         }
         // First-time purchase: fetch fresh quote then write position
@@ -295,6 +420,15 @@ export function useStockQuotes() {
             if (prev.some((p) => p.ticker === fresh.ticker)) return prev;
             return [fresh, ...prev];
           });
+          if (user) {
+            void upsertPortfolioStock(user.id, {
+              ticker: fresh.ticker,
+              name: fresh.name,
+              sector: fresh.sector,
+              quantity: fresh.quantity,
+              cost: fresh.cost,
+            });
+          }
           return true;
         } catch (err) {
           setError(err instanceof Error ? err.message : "Falha ao registrar compra.");
@@ -302,23 +436,42 @@ export function useStockQuotes() {
         }
       }
 
-      // sell
-      let ok = false;
+      // sell — calcula proximo estado fora pra ter referencia tipada do resultado.
+      const target = stocks.find(
+        (s) => s.ticker.toUpperCase() === ticker.toUpperCase()
+      );
+      if (!target) {
+        setError("Quantidade insuficiente para venda.");
+        return false;
+      }
+      const remaining = (target.quantity || 0) - shares;
+      if (remaining < 0) {
+        setError("Quantidade insuficiente para venda.");
+        return false;
+      }
+      const updated: Stock = { ...target, quantity: remaining };
+      const removed = remaining === 0 && !target.isFavorite;
       setStocks((prev) =>
         prev
-          .map((s) => {
-            if (s.ticker.toUpperCase() !== ticker.toUpperCase()) return s;
-            const remaining = (s.quantity || 0) - shares;
-            if (remaining < 0) return s;
-            ok = true;
-            return { ...s, quantity: remaining };
-          })
+          .map((s) => (s.ticker === target.ticker ? updated : s))
           .filter((s) => s.quantity > 0 || s.isFavorite)
       );
-      if (!ok) setError("Quantidade insuficiente para venda.");
-      return ok;
+      if (user) {
+        if (removed) {
+          void deletePortfolioStock(user.id, target.ticker);
+        } else {
+          void upsertPortfolioStock(user.id, {
+            ticker: updated.ticker,
+            name: updated.name,
+            sector: updated.sector,
+            quantity: updated.quantity,
+            cost: updated.cost,
+          });
+        }
+      }
+      return true;
     },
-    [stocks]
+    [stocks, user]
   );
 
   useEffect(() => {

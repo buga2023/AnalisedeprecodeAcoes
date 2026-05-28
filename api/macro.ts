@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "./_cors";
+import { checkRateLimit } from "./_ratelimit";
 
 /**
  * Indicadores macroeconômicos do Brasil — SELIC, IPCA, CDI, IBC-Br, USD/BRL.
@@ -123,6 +124,14 @@ function buildResumo(r: Omit<MacroResponse, "resumoParaPrompt">): string {
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (applyCors(request, response, "GET, OPTIONS")) return;
 
+  // Endpoint sem input de usuario, mas exposto publicamente — rate-limit
+  // generoso (cache 30min interno cobre a maioria das chamadas).
+  const rate = checkRateLimit(request, { windowMs: 60_000, max: 60, burstMax: 10, burstWindowMs: 5_000 });
+  if (!rate.allowed) {
+    response.setHeader("Retry-After", String(rate.retryAfterSec));
+    return response.status(429).json({ error: "rate-limited", retryAfterSec: rate.retryAfterSec });
+  }
+
   try {
     if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
       response.setHeader("X-Cache", "HIT");
@@ -183,7 +192,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     cache = { at: Date.now(), payload };
     return response.status(200).json(payload);
   } catch (error) {
-    console.error("[api/macro] erro fatal:", error);
+    const msg = error instanceof Error ? error.message : "";
+    console.error("[api/macro] erro fatal:", msg.slice(0, 120));
     if (cache) return response.status(200).json(cache.payload);
     return response.status(200).json({
       generatedAt: new Date().toISOString(),

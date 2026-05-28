@@ -249,11 +249,25 @@ export function ChatSheet({
 
         <div
           style={{
-            padding: "12px 16px 24px",
+            padding: "10px 16px 24px",
             borderTop: `0.5px solid ${T.hairline}`,
             background: "rgba(2,3,20,0.5)",
           }}
         >
+          {/* Disclaimer CVM compacto — visível em TODAS as conversas. Fonte única
+              em `lib/legal.ts`. */}
+          <div
+            style={{
+              fontFamily: T.body,
+              fontSize: 10,
+              color: T.ink30,
+              textAlign: "center",
+              marginBottom: 8,
+              lineHeight: 1.3,
+            }}
+          >
+            Conteúdo educacional. Não é recomendação de investimento (Res. CVM 14).
+          </div>
           <div
             style={{
               display: "flex",
