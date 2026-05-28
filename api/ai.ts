@@ -1,20 +1,35 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { applyCors } from './_cors';
+import { checkRateLimit } from './_ratelimit';
+import { cacheKey, getCached, setCached } from './_aicache';
 
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
-  response.setHeader('Content-Type', 'application/json');
-
-  if (request.method === 'OPTIONS') {
-    return response.status(204).end();
-  }
+  if (applyCors(request, response, 'POST, OPTIONS')) return;
 
   if (request.method !== 'POST') {
     return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Rate limit conservador: 10 req/min/IP + burst 3 req em 5s.
+  // Groq free tier tem cota baixa — limite agressivo evita estourar.
+  const rate = checkRateLimit(request, {
+    windowMs: 60_000,
+    max: 10,
+    burstMax: 3,
+    burstWindowMs: 5_000,
+  });
+  if (!rate.allowed) {
+    response.setHeader('Retry-After', String(rate.retryAfterSec));
+    return response.status(429).json({
+      error:
+        rate.reason === 'burst'
+          ? 'Calma — espere alguns segundos entre mensagens.'
+          : 'Muitas requisições no último minuto. Tente novamente em breve.',
+      retryAfterSec: rate.retryAfterSec,
+    });
   }
 
   const { provider: bodyProvider, messages, temperature = 0.7, max_tokens = 2048, response_format } = request.body;
@@ -39,6 +54,16 @@ export default async function handler(
     return response.status(400).json({ error: 'messages e obrigatorio.' });
   }
 
+  // Cache: mesma combinação de (provider, messages, temperature, max_tokens,
+  // response_format) → devolve resposta cacheada sem chamar a Groq. TTL 10min.
+  const key = cacheKey({ provider, messages, temperature, max_tokens, response_format });
+  const cached = getCached(key);
+  if (cached) {
+    response.setHeader('X-Cache', 'HIT');
+    return response.status(200).json(cached);
+  }
+  response.setHeader('X-Cache', 'MISS');
+
   try {
     let result;
     switch (provider) {
@@ -58,6 +83,7 @@ export default async function handler(
         return response.status(400).json({ error: `Provider ${provider} nao suportado.` });
     }
 
+    setCached(key, result);
     return response.status(200).json(result);
   } catch (error: any) {
     console.error(`Erro no provider ${provider}:`, error);

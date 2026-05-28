@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { applyCors } from "./_cors";
 
 /**
  * Indicadores macroeconômicos do Brasil — SELIC, IPCA, CDI, IBC-Br, USD/BRL.
@@ -120,11 +121,7 @@ function buildResumo(r: Omit<MacroResponse, "resumoParaPrompt">): string {
 }
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
-  response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  response.setHeader("Content-Type", "application/json");
-
-  if (request.method === "OPTIONS") return response.status(204).end();
+  if (applyCors(request, response, "GET, OPTIONS")) return;
 
   try {
     if (cache && Date.now() - cache.at < CACHE_TTL_MS) {

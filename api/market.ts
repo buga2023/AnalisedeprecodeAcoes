@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { applyCors } from './_cors';
 
 // Cache em memória por instância da função
 let cachedData: any = null;
@@ -9,15 +10,9 @@ export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  response.setHeader('Content-Type', 'application/json');
+  if (applyCors(request, response, 'GET, OPTIONS')) return;
 
   try {
-    if (request.method === 'OPTIONS') {
-      return response.status(204).end();
-    }
 
     // 1. Tentar Yahoo Finance (Alta Estabilidade)
     try {

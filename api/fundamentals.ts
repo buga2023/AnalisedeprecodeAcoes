@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { applyCors } from "./_cors";
 
 /**
  * /api/fundamentals?ticker=PETR4
@@ -222,11 +223,7 @@ function cleanJson(raw: string): string {
 }
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
-  response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  response.setHeader("Content-Type", "application/json");
-
-  if (request.method === "OPTIONS") return response.status(204).end();
+  if (applyCors(request, response, "GET, OPTIONS")) return;
 
   try {
     const ticker = String(request.query.ticker || "").toUpperCase().trim();

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { applyCors } from './_cors';
 
 /**
  * PROXY 100% YAHOO FINANCE
@@ -21,12 +22,7 @@ const YAHOO_HEADERS: Record<string, string> = {
 };
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  response.setHeader('Content-Type', 'application/json');
-
-  if (request.method === 'OPTIONS') return response.status(204).end();
+  if (applyCors(request, response, 'GET, OPTIONS')) return;
 
   const endpoint = String(request.query.endpoint || "");
 

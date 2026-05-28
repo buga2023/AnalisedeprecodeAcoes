@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { applyCors } from "./_cors";
 
 /**
  * AGGREGADOR DE NOTÍCIAS GLOBAIS — sem chave, sem custo.
@@ -273,6 +274,34 @@ const TOPICS: TopicSpec[] = [
       { q: "Brazil fiscal risk markets", hl: "en", gl: "US" },
     ],
   },
+  {
+    topic: "guerra",
+    description: "Conflitos armados ativos (Ucrânia, Oriente Médio, África) e tensões militares.",
+    arbitrageAngle:
+      "Conflito ativo → petróleo (PETR4/PRIO3) e ouro sobem; defesa global aquece; risco-off → dólar forte vs reais; queda de armistício/cessar-fogo desfaz prêmio de risco.",
+    gdeltQuery:
+      '(war OR conflict OR airstrike OR ceasefire OR "military operation" OR invasion OR drone strike) sourcelang:eng',
+    googleQueries: [
+      { q: "Ukraine Russia war oil price", hl: "en", gl: "US" },
+      { q: "Middle East conflict markets impact", hl: "en", gl: "US" },
+      { q: "guerra Ucrânia Oriente Médio petróleo", hl: "pt-BR", gl: "BR" },
+    ],
+  },
+  {
+    topic: "mercado-acoes",
+    description:
+      "Movimentos de ações específicas: quedas fortes, fusões/aquisições, follow-on, recompra, mudança de gestão.",
+    arbitrageAngle:
+      "M&A/recompra → prêmio direto na cotação; queda forte com fundamento intacto → oportunidade pelo perfil; follow-on diluitivo → pressão de curto prazo no papel; troca de CEO em estatal → volatilidade política.",
+    gdeltQuery:
+      '(merger OR acquisition OR "follow-on" OR buyback OR "stock plunge" OR delisting OR IPO) (sourcelang:eng OR sourcelang:por)',
+    googleQueries: [
+      { q: "ações B3 queda forte hoje", hl: "pt-BR", gl: "BR" },
+      { q: "fusão aquisição empresa brasileira B3", hl: "pt-BR", gl: "BR" },
+      { q: "follow-on oferta secundária B3", hl: "pt-BR", gl: "BR" },
+      { q: "recompra de ações Petrobras Vale Itaú", hl: "pt-BR", gl: "BR" },
+    ],
+  },
 ];
 
 /* ─── Cache em memória + builder ──────────────────────────────────────── */
@@ -342,11 +371,7 @@ async function refreshCache(): Promise<WorldNewsResponse> {
 /* ─── Handler ─────────────────────────────────────────────────────────── */
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
-  response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  response.setHeader("Content-Type", "application/json");
-
-  if (request.method === "OPTIONS") return response.status(204).end();
+  if (applyCors(request, response, "GET, OPTIONS")) return;
 
   try {
     const forceRefresh = String(request.query.refresh || "") === "1";

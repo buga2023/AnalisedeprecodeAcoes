@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { applyCors } from "./_cors";
 
 /**
  * Proxy de notícias via Google News RSS — sem API key. Aceita `?ticker=PETR4`
@@ -126,21 +127,41 @@ function buildTickerQuery(ticker: string): string {
   return `${t} ações`;
 }
 
-export default async function handler(request: VercelRequest, response: VercelResponse) {
-  response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  response.setHeader("Content-Type", "application/json");
+/**
+ * Query especializada para Fato Relevante/comunicado ao mercado de uma empresa.
+ * Google News indexa manchetes da Valor/Infomoney/Brazil Journal que cobrem
+ * fato relevante publicado na CVM — chega em ~10-30min após a publicação oficial.
+ */
+function buildRegulatoryTickerQuery(ticker: string): string {
+  const t = ticker.toUpperCase();
+  const name = TICKER_TO_NAME[t];
+  if (name) return `("fato relevante" OR "comunicado ao mercado") ("${name}" OR "${t}")`;
+  return `("fato relevante" OR "comunicado ao mercado") "${t}"`;
+}
 
-  if (request.method === "OPTIONS") return response.status(204).end();
+function buildRegulatoryTopicQuery(): string {
+  // Macro de fato relevante: pega anúncios sem ticker específico (recompra,
+  // M&A, follow-on, suspensão de pregão) que costumam pingar várias empresas.
+  return '("fato relevante" OR "comunicado ao mercado") (B3 OR Bovespa OR CVM)';
+}
+
+export default async function handler(request: VercelRequest, response: VercelResponse) {
+  if (applyCors(request, response, "GET, OPTIONS")) return;
 
   try {
     const ticker = String(request.query.ticker || "").toUpperCase().trim();
     const q = String(request.query.q || "").trim();
     const topic = String(request.query.topic || "").trim().toLowerCase();
+    const kind = String(request.query.kind || "").trim().toLowerCase();
     const limit = Math.min(12, Math.max(1, Number(request.query.limit) || 8));
 
     let query: string;
-    if (ticker) {
+    let resolvedKind: "news" | "regulatory" = "news";
+
+    if (kind === "regulatory" || topic === "regulatorio" || topic === "regulatory") {
+      resolvedKind = "regulatory";
+      query = ticker ? buildRegulatoryTickerQuery(ticker) : buildRegulatoryTopicQuery();
+    } else if (ticker) {
       query = buildTickerQuery(ticker);
     } else if (q) {
       query = q;
@@ -162,13 +183,14 @@ export default async function handler(request: VercelRequest, response: VercelRe
     } else {
       return response.status(400).json({
         error:
-          "Forneça `ticker`, `q` (busca livre) ou `topic` (brasil|politica|economia|mundo).",
+          "Forneça `ticker`, `q` (busca livre), `topic` (brasil|politica|economia|mundo|regulatorio) ou `kind=regulatory`.",
       });
     }
 
     const items = await fetchRSS(query);
     return response.status(200).json({
       query,
+      kind: resolvedKind,
       source: "Google News RSS",
       generatedAt: new Date().toISOString(),
       items: items.slice(0, limit),

@@ -22,6 +22,14 @@ export function viteApiPlugin(): Plugin {
         const parsed = new URL(req.url, "http://localhost");
         const route = parsed.pathname.replace(/^\/api\//, "").replace(/\/+$/, "");
         if (!route || route.includes("..")) return next();
+        // Arquivos prefixados com `_` em api/ são utilitários (ex.: api/_cors.ts),
+        // não rotas. Mesma convenção que o Vercel adota em build time.
+        if (route.startsWith("_") || route.includes("/_")) {
+          res.statusCode = 404;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "Not Found" }));
+          return;
+        }
 
         const tsPath = resolve(apiDir, `${route}.ts`);
         if (!existsSync(tsPath)) {
