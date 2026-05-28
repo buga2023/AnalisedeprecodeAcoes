@@ -4,14 +4,23 @@ import type { ChatTone } from "@/hooks/usePraChat";
 
 const STORAGE_KEY = "praxia-ui-prefs";
 
+export type AIVerbosity = "concise" | "verbose";
+
 interface Preferences {
   accent: string;
   tone: ChatTone;
+  /**
+   * Verbosidade da IA. "concise" (default) usa thinking compacto, prompt
+   * enxuto e templates deterministicos onde possivel — economiza tokens.
+   * "verbose" desliga as otimizacoes pra ter o output completo (debug).
+   */
+  aiVerbosity: AIVerbosity;
 }
 
 const DEFAULTS: Preferences = {
   accent: PraxiaTokens.accent,
   tone: "casual",
+  aiVerbosity: "concise",
 };
 
 function load(): Preferences {
@@ -39,6 +48,10 @@ export function useUIPreferences() {
     (tone: ChatTone) => setPrefs((p) => ({ ...p, tone })),
     []
   );
+  const setAIVerbosity = useCallback(
+    (aiVerbosity: AIVerbosity) => setPrefs((p) => ({ ...p, aiVerbosity })),
+    []
+  );
 
-  return { ...prefs, setAccent, setTone };
+  return { ...prefs, setAccent, setTone, setAIVerbosity };
 }

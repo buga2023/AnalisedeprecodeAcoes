@@ -160,6 +160,103 @@ export interface PriceAlert {
   triggerPrice?: number;
 }
 
+/* ─── Praxia: weekly digest (Fase 6) ────────────────────────────────────── */
+
+/**
+ * Contexto agregado da semana — entrada para `gerarDigestSemanal`. Todos os
+ * campos são derivados de dados REAIS (Yahoo histórico, transações registradas,
+ * alertas disparados, cache de notícias materiais). Quando um dado não pode ser
+ * obtido com segurança, o campo é `null` ou `[]` — nunca preenchido com fake.
+ */
+export interface DigestContext {
+  /** Chave ISO da semana resumida ("2026-W22"). Cobre a semana anterior. */
+  isoWeek: string;
+  /** Segunda-feira da semana resumida (ISO date). */
+  weekStart: string;
+  /** Domingo da semana resumida (ISO date). */
+  weekEnd: string;
+  /** Variação % da carteira ponderada pelo peso. `null` se faltam preços de referência. */
+  variacaoSemanaPct: number | null;
+  /** Valor total da carteira no fim da semana (R$). */
+  patrimonioFim: number;
+  /** Top mover ponderado por peso na carteira. */
+  topMover: { ticker: string; variacaoPct: number; impactoR$: number } | null;
+  /** Dividendos PAGOS na semana (histórico Yahoo × qty). */
+  dividendosRecebidos: Array<{ ticker: string; date: string; amount: number }>;
+  totalDividendosSemana: number;
+  /** Transações registradas na semana. */
+  transacoesDaSemana: Array<{ ticker: string; type: TransactionType; shares: number; total: number; timestamp: string }>;
+  /** Alertas disparados na semana. */
+  alertasDisparados: Array<{ ticker: string; type: AlertType; value: number; triggerPrice?: number; triggeredAt: string }>;
+  /** Notícias materiais classificadas na semana (cache). */
+  noticiasMateriais: Array<{ ticker: string; titulo: string; link: string; impacto: string; generatedAt: number }>;
+  /** Snapshot leve do portfolio para o LLM ter contexto. */
+  portfolioSnapshot: Array<{ ticker: string; quantity: number; price: number; score: number; weight: number }>;
+}
+
+export type DigestScreenTarget =
+  | "dividends"
+  | "analysis"
+  | "market"
+  | "alerts"
+  | "news"
+  | "home";
+
+export interface DigestEventoNotavel {
+  titulo: string;
+  detalhe: string;
+}
+
+export interface DigestProximaAcao {
+  acao: string;
+  motivo: string;
+  screenAlvo?: DigestScreenTarget;
+}
+
+export interface WeeklyDigest {
+  /** ISO-week do digest (chave de cache). */
+  isoWeek: string;
+  /** 2-3 frases, começa com "Pelo seu perfil X...". */
+  resumo: string;
+  /** 1 frase com o evento mais importante. */
+  destaque: string;
+  eventosNotaveis: DigestEventoNotavel[];
+  proximasAcoes: DigestProximaAcao[];
+  /** Fontes do conjunto (rótulos curtos + URLs quando aplicável). */
+  fontes: string[];
+  /** Timestamp da geração. */
+  generatedAt: number;
+}
+
+/* ─── Praxia: historico trimestral de fundamentos (Fase 7) ──────────────── */
+
+export interface FundamentalQuarter {
+  /** Label PT-BR ex.: "1T25". */
+  periodo: string;
+  /** Data final do trimestre (YYYY-MM-DD). */
+  dataFim: string;
+  netIncome?: number;
+  revenue?: number;
+  /** ROE anualizado do trimestre (fracao 0..1). */
+  roe?: number;
+  /** Margem liquida do trimestre (fracao 0..1). */
+  netMargin?: number;
+  debtToEbitda?: number;
+  /** DY TTM (fracao). Yahoo retorna so a leitura mais recente; pode aparecer so no ultimo trimestre. */
+  dy?: number;
+  /** P/L TTM. Idem — geralmente so no ultimo trimestre. */
+  pl?: number;
+}
+
+export interface FundamentalHistoryResponse {
+  ticker: string;
+  quarters: FundamentalQuarter[];
+  source: string;
+  generatedAt: string;
+  note?: string;
+  error?: string;
+}
+
 /* ─── Praxia: chat history with Pra ─────────────────────────────────────── */
 export type ChatRole = 'user' | 'pra';
 

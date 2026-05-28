@@ -15,6 +15,8 @@ import {
 } from "@/lib/api";
 import { calculateGrahamValue, calculateMarginOfSafety, calculateBazinCeiling, calculateGrahamGrowth } from "@/lib/calculators";
 import { StockAIAnalysisSection } from "../StockAIAnalysisSection";
+import { StockNewsSection } from "../StockNewsSection";
+import { StockFundamentalsTrend } from "../StockFundamentalsTrend";
 import { StockReportsSection } from "../StockReportsSection";
 import { AIBadge } from "../AIBadge";
 
@@ -757,6 +759,10 @@ export function ScreenStockDetail({
         </PraxiaCard>
 
         <StockAIAnalysisSection stock={stock} profile={profile} accent={accent} />
+
+        <StockFundamentalsTrend ticker={stock.ticker} accent={accent} />
+
+        <StockNewsSection ticker={stock.ticker} profile={profile} accent={accent} />
 
         <StockReportsSection ticker={stock.ticker} currentPrice={stock.price} />
 

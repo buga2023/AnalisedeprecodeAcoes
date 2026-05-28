@@ -3,11 +3,13 @@ import { PraxiaTokens } from "./tokens";
 import { PraxiaCard } from "./PraxiaCard";
 import { fetchAIInsights, toPortfolioData, type AIResponse } from "@/lib/ai";
 import { fetchMacroContext, type MacroContext } from "@/lib/context";
+import { recordHit } from "@/lib/aiTelemetry";
 import type { InvestorProfile, Stock } from "@/types/stock";
 import { renderWithLinks, SourceChip } from "./Citations";
 import { riskLabel } from "@/hooks/useInvestorProfile";
 import { DisclaimerBar } from "./DisclaimerBar";
 import {
+  computePortfolioSentiment,
   portfolioSignature,
   readInsightsCache,
   sentimentColor,
@@ -41,7 +43,11 @@ export function PortfolioInsightsContent({
   useEffect(() => {
     const cached = readInsightsCache(signature);
     if (cached) {
-      setResponse(cached.response);
+      // HIT — sem chamada LLM.
+      recordHit("insights");
+      // Sentimento e determinstico (media de scores) — sobrescreve o que a
+      // IA gerou no momento do cache pra refletir o estado atual da carteira.
+      setResponse({ ...cached.response, sentimento: computePortfolioSentiment(stocks) });
       setGeneratedAt(cached.timestamp);
     } else {
       setResponse(null);
@@ -49,7 +55,7 @@ export function PortfolioInsightsContent({
     }
     setError(null);
     fetchMacroContext().then((m) => setMacro(m));
-  }, [signature]);
+  }, [signature, stocks]);
 
   const run = useCallback(async () => {
     if (stocks.length === 0) {
@@ -65,8 +71,14 @@ export function PortfolioInsightsContent({
     try {
       const payload = stocks.map(toPortfolioData);
       const result = await fetchAIInsights(payload, profile);
-      writeInsightsCache(signature, result);
-      setResponse(result);
+      // Sentimento e calculado determinsticamente — IA pode opinar, mas a
+      // exibicao usa a heuristica de score medio (mais previsivel pra UI).
+      const withSentiment: AIResponse = {
+        ...result,
+        sentimento: computePortfolioSentiment(stocks),
+      };
+      writeInsightsCache(signature, withSentiment);
+      setResponse(withSentiment);
       setGeneratedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao gerar insights.");

@@ -4,6 +4,8 @@ import { PraxiaCard } from "./PraxiaCard";
 import { Icon } from "./Icon";
 import { analisarAcaoComIA, type AnaliseIA, type DadosQuantitativos } from "@/lib/ai";
 import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators";
+import { buildJustificativaTemplate } from "@/lib/justificativaTemplate";
+import { recordHit } from "@/lib/aiTelemetry";
 import type { InvestorProfile, Stock } from "@/types/stock";
 import { renderWithLinks, SourceChip } from "./Citations";
 import { riskLabel } from "@/hooks/useInvestorProfile";
@@ -23,9 +25,29 @@ interface CacheEntry {
 const CACHE_KEY_PREFIX = "stocks-ai-analysis:";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-function readCache(ticker: string): AnaliseIA | null {
+/**
+ * Signature que captura mudancas MATERIAIS no ativo (score, ROE, divida,
+ * preco em bucket largo). Oscilacao intraday de preco/centavos NAO invalida —
+ * so quando algum fundamento de fato muda. Reduz drasticamente MISS sem
+ * deixar a analise ficar stale.
+ */
+function buildAnalysisSignature(stock: Stock): string {
+  const score = Math.round(stock.score / 5) * 5; // bucket de 5pts
+  const roePp = Math.round((stock.roe * 100) / 5) * 5; // ROE em pp arredondado a 5
+  const debt = Number.isFinite(stock.debtToEbitda)
+    ? Math.round(stock.debtToEbitda * 2) / 2 // multiplos de 0.5
+    : 0;
+  const priceBucket = Math.round(stock.price * 10) / 10; // 1 casa decimal
+  return `${stock.ticker}|s${score}|r${roePp}|d${debt}|p${priceBucket}`;
+}
+
+function cacheKeyForStock(stock: Stock): string {
+  return CACHE_KEY_PREFIX + buildAnalysisSignature(stock);
+}
+
+function readCache(stock: Stock): AnaliseIA | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY_PREFIX + ticker);
+    const raw = localStorage.getItem(cacheKeyForStock(stock));
     if (!raw) return null;
     const entry = JSON.parse(raw) as CacheEntry;
     if (Date.now() - entry.timestamp > CACHE_TTL_MS) return null;
@@ -35,9 +57,9 @@ function readCache(ticker: string): AnaliseIA | null {
   }
 }
 
-function writeCache(ticker: string, analise: AnaliseIA) {
+function writeCache(stock: Stock, analise: AnaliseIA) {
   const entry: CacheEntry = { timestamp: Date.now(), analise };
-  localStorage.setItem(CACHE_KEY_PREFIX + ticker, JSON.stringify(entry));
+  localStorage.setItem(cacheKeyForStock(stock), JSON.stringify(entry));
 }
 
 function buildDados(stock: Stock): DadosQuantitativos {
@@ -77,10 +99,12 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
 
   useEffect(() => {
     setError(null);
-    const cached = readCache(stock.ticker);
+    const cached = readCache(stock);
     setAnalise(cached);
     if (cached) {
-      const raw = localStorage.getItem(CACHE_KEY_PREFIX + stock.ticker);
+      // HIT — analise reaproveitada da cache, sem chamada LLM.
+      recordHit("analise");
+      const raw = localStorage.getItem(cacheKeyForStock(stock));
       if (raw) {
         try {
           const entry = JSON.parse(raw) as CacheEntry;
@@ -92,7 +116,9 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
     } else {
       setGeneratedAt(null);
     }
-  }, [stock.ticker]);
+    // Re-le quando algum dado material muda — signature inclui score/roe/debt/price-bucket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stock.ticker, stock.score, stock.roe, stock.debtToEbitda, Math.round(stock.price * 10)]);
 
   const run = useCallback(async () => {
     if (!profile) {
@@ -104,7 +130,7 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
     try {
       const dados = buildDados(stock);
       const result = await analisarAcaoComIA(stock.ticker, stock.name ?? stock.ticker, dados, profile);
-      writeCache(stock.ticker, result);
+      writeCache(stock, result);
       setAnalise(result);
       setGeneratedAt(Date.now());
     } catch (err) {
@@ -262,9 +288,35 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
             )}
           </div>
 
-          <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.ink, lineHeight: 1.55, marginBottom: 12 }}>
-            {renderWithLinks(analise.justificativa, accent)}
+          {/* Base deterministica (Graham/Score/MoS) — sempre presente, sem custo de LLM. */}
+          <div
+            style={{
+              fontFamily: T.body,
+              fontSize: 12.5,
+              color: T.ink,
+              lineHeight: 1.55,
+              marginBottom: analise.justificativa ? 8 : 12,
+            }}
+          >
+            {buildJustificativaTemplate(stock, profile)}
           </div>
+
+          {/* Complemento qualitativo da IA (macro/noticia/setor) — pode ser vazio. */}
+          {analise.justificativa && (
+            <div
+              style={{
+                fontFamily: T.body,
+                fontSize: 12.5,
+                color: T.ink70,
+                lineHeight: 1.55,
+                marginBottom: 12,
+                paddingLeft: 10,
+                borderLeft: `2px solid ${accent}55`,
+              }}
+            >
+              {renderWithLinks(analise.justificativa, accent)}
+            </div>
+          )}
 
           {analise.resumoTrimestral && (
             <div style={{ marginBottom: 10 }}>

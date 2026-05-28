@@ -44,6 +44,26 @@ export function sentimentColor(s: AIResponse["sentimento"]): string {
   return PraxiaTokens.warn;
 }
 
+/**
+ * Sentimento do portfolio calculado DETERMINISTICAMENTE pelo score medio
+ * dos ativos. Substitui a decisao da IA: a IA gasta tokens pra responder
+ * "otimista | pessimista | neutro" quando isso e uma estatistica trivial.
+ *
+ * Faixas:
+ *   - media score > 70 -> otimista (carteira solida no agregado)
+ *   - media score < 50 -> pessimista (carteira fraca no agregado)
+ *   - 50..70           -> neutro
+ *
+ * Quando portfolio esta vazio, retorna "neutro" como default seguro.
+ */
+export function computePortfolioSentiment(stocks: Stock[]): AIResponse["sentimento"] {
+  if (stocks.length === 0) return "neutro";
+  const avg = stocks.reduce((acc, s) => acc + (s.score ?? 0), 0) / stocks.length;
+  if (avg > 70) return "otimista";
+  if (avg < 50) return "pessimista";
+  return "neutro";
+}
+
 export function tipoColor(t: AIInsight["tipo"]): string {
   if (t === "alta") return PraxiaTokens.up;
   if (t === "baixa") return PraxiaTokens.down;

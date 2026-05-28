@@ -8,7 +8,28 @@ export interface ParsedSheet {
   totalRows: number;
 }
 
+/**
+ * Limite de tamanho de planilha (5 MB). Mitigação prática para os CVEs de
+ * `xlsx@0.18.5` (Prototype Pollution GHSA-4r6h-8v6p-xvw6 + ReDoS
+ * GHSA-5pgg-2g8v-p4x9): bloqueia arquivos atacante grandes antes do parser
+ * tocar. Carteira real cabe folgado em 5 MB.
+ */
+const MAX_SHEET_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Header keys que nunca podem ir pro objeto-resultado — atacante pode injetar
+ * essas chaves via planilha maliciosa para poluir Object.prototype.
+ */
+const FORBIDDEN_HEADER_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+function isHeaderSafe(h: string): boolean {
+  return h.length > 0 && !FORBIDDEN_HEADER_KEYS.has(h);
+}
+
 export async function parseSheet(file: File): Promise<ParsedSheet> {
+  if (file.size > MAX_SHEET_BYTES) {
+    throw new Error(`Planilha grande demais (limite ${MAX_SHEET_BYTES / (1024 * 1024)} MB).`);
+  }
   const extension = file.name.split('.').pop()?.toLowerCase();
 
   if (extension === 'csv') {
@@ -26,14 +47,22 @@ async function parseCSV(file: File): Promise<ParsedSheet> {
       header: true,
       skipEmptyLines: 'greedy',
       complete: (results) => {
-        const headers = results.meta.fields || [];
-        const rows = results.data as Record<string, string>[];
-        
-        // Limpeza básica de dados
-        const cleanRows = rows.filter(row => {
-          const values = Object.values(row).join('').trim();
-          return values.length > 0 && !values.toLowerCase().includes('total');
-        });
+        const headers = (results.meta.fields || []).filter(isHeaderSafe);
+        const rowsAll = results.data as Record<string, string>[];
+
+        // Limpeza básica + remove chaves bloqueadas (prototype pollution defense).
+        const cleanRows = rowsAll
+          .map(row => {
+            const clean: Record<string, string> = Object.create(null);
+            for (const h of headers) {
+              if (h in row) clean[h] = row[h];
+            }
+            return clean;
+          })
+          .filter(row => {
+            const values = Object.values(row).join('').trim();
+            return values.length > 0 && !values.toLowerCase().includes('total');
+          });
 
         resolve({
           headers,
@@ -84,9 +113,11 @@ async function parseExcel(file: File): Promise<ParsedSheet> {
   const rows: Record<string, string>[] = rowsRaw
     .filter(row => row.length > 0 && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== ''))
     .map(row => {
-      const obj: Record<string, string> = {};
+      // Object.create(null) impede prototype pollution caso `headers` ainda
+      // escape a sanitização — chaves bizarras ficam isoladas do prototype.
+      const obj: Record<string, string> = Object.create(null);
       headers.forEach((header, index) => {
-        if (header) {
+        if (isHeaderSafe(header)) {
           obj[header] = String(row[index] ?? '').trim();
         }
       });

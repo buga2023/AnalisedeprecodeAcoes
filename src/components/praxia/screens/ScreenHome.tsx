@@ -11,9 +11,12 @@ import { SectionHeader } from "../SectionHeader";
 import { HoldingRow } from "../HoldingRow";
 import { DeltaPill } from "../Tag";
 import { MacroQuotesStrip } from "../MacroQuotesStrip";
+import { MaterialEventBanner } from "../MaterialEventBanner";
 import { DisclaimerBar } from "../DisclaimerBar";
 import { WeeklyPerformanceCard } from "../WeeklyPerformanceCard";
-import type { Stock, InvestorProfile } from "@/types/stock";
+import { WeeklyDigestCard } from "../WeeklyDigestCard";
+import type { DividendEvent } from "@/lib/dividends";
+import type { DigestScreenTarget, PriceAlert, Stock, Transaction, InvestorProfile } from "@/types/stock";
 import {
   sectorAllocation,
   todayChangeValue,
@@ -36,6 +39,12 @@ interface ScreenHomeProps {
   onOpenAlerts?: () => void;
   onOpenNews?: () => void;
   activeAlertCount?: number;
+  /** Inputs do digest semanal (lifted no PraxiaApp). */
+  transactions?: Transaction[];
+  triggeredAlerts?: PriceAlert[];
+  dividendHistoryByTicker?: Record<string, DividendEvent[]>;
+  /** Navega para uma tela alvo a partir de "proximas acoes" do digest. */
+  onNavigate?: (target: DigestScreenTarget) => void;
 }
 
 export function ScreenHome({
@@ -51,6 +60,10 @@ export function ScreenHome({
   onOpenAlerts,
   onOpenNews,
   activeAlertCount = 0,
+  transactions = [],
+  triggeredAlerts = [],
+  dividendHistoryByTicker = {},
+  onNavigate,
 }: ScreenHomeProps) {
   const T = PraxiaTokens;
 
@@ -195,6 +208,10 @@ export function ScreenHome({
         {/* macro quotes strip */}
         <MacroQuotesStrip />
 
+        {/* Banner de evento material — só aparece se houver cache fresco
+            (< 24h) com item marcado como material em algum ticker da carteira. */}
+        <MaterialEventBanner stocks={stocks} accent={accent} onOpen={onOpenStock} />
+
         {/* portfolio hero */}
         <PraxiaCard
           raised
@@ -290,6 +307,17 @@ export function ScreenHome({
 
         {/* Global disclaimer */}
         <DisclaimerBar accent={accent} />
+
+        {/* Digest semanal IA — só aparece se carteira tem posição */}
+        <WeeklyDigestCard
+          accent={accent}
+          stocks={stocks}
+          transactions={transactions}
+          dividendHistoryByTicker={dividendHistoryByTicker}
+          triggeredAlerts={triggeredAlerts}
+          profile={profile}
+          onNavigate={onNavigate}
+        />
 
         {/* AI insight */}
         <AIInsightCard
