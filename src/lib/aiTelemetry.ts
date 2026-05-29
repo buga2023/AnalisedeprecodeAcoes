@@ -22,7 +22,8 @@ export type AICapability =
   | "insights"
   | "comparacao"
   | "news_topic"
-  | "news_feed";
+  | "news_feed"
+  | "screener";
 
 export interface CapabilityStats {
   calls: number;
@@ -61,6 +62,7 @@ function emptyStats(): TelemetryStats {
       comparacao: emptyCapStats(),
       news_topic: emptyCapStats(),
       news_feed: emptyCapStats(),
+      screener: emptyCapStats(),
     },
     totalCalls: 0,
     totalHits: 0,
