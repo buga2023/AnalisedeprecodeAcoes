@@ -75,7 +75,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
   // Cache: mesma combinação de (provider, messages, temperature, max_tokens,
   // response_format) → devolve resposta cacheada sem chamar o provider. TTL 10min.
-  const key = cacheKey({ provider, messages, temperature, max_tokens, response_format });
+  // Chave provider-agnostic ("balanced"): a mesma pergunta reusa a resposta
+  // cacheada independente de qual provider (Groq/Gemini/OpenRouter) a gerou.
+  const key = cacheKey({ provider: "balanced", messages, temperature, max_tokens, response_format });
 
   // L1 (memória, por instância): hit imediato.
   const l1 = getCached(key);

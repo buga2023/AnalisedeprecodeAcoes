@@ -119,13 +119,11 @@ function callSingleProvider(
  * falharem ou nenhum estiver configurado.
  */
 export async function callLLM(opts: CallLLMOptions): Promise<CallLLMResult> {
-  const { provider, messages, temperature = 0.7, max_tokens = 2048, response_format } = opts;
-  // Se o caller forçou um provider específico (e ele tem chave), respeita e usa
-  // os demais como fallback. Caso contrário, round-robin entre os free.
-  const forced = getProviderApiKey(provider) ? provider : null;
-  const chain = forced
-    ? [forced, ...balancedChain().filter((p) => p !== forced)]
-    : balancedChain();
+  const { messages, temperature = 0.7, max_tokens = 2048, response_format } = opts;
+  // Roteamento balanceado (round-robin entre Groq/Gemini/OpenRouter). O provider
+  // resolvido server-side (`AI_PROVIDER`/`opts.provider`) não fixa mais a rota —
+  // o balancer distribui pra economizar a quota free de cada um.
+  const chain = balancedChain();
 
   let lastErr: LLMError = new LLMError(503, "IA nao configurada: defina a chave de algum provider.");
   for (const p of chain) {
