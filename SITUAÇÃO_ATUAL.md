@@ -1,6 +1,6 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-29 (auth por email + senha — ver seção 12).
+> Documento vivo. Última atualização: 2026-05-29 (validação consolidada + push do branch `feat/billing-dormante` pro GitHub — ver seção 13).
 > Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
 > Pendentes: Fases 8 (FIIs), 9 (IR).
 >
@@ -398,9 +398,9 @@ enviam `Authorization` + `feature` e tratam 402; `src/App.tsx` (lift `useSubscri
   primeiro teste — usar usuário de teste do painel MP ou credenciais `TEST-…` antes de ativar.
 - Rodar `002_billing.sql` no Supabase Dashboard antes de ligar.
 - Registrar webhook `…/api/mp-webhook` no painel MP + gerar/salvar `MERCADO_PAGO_WEBHOOK_SECRET`.
-- **View `current_month_usage`** (migration 002) não tem `security_invoker=on` → leitura client-side
-  pode não respeitar RLS. Server (service role) ok. Antes de ligar: `alter view public.current_month_usage
-  set (security_invoker = on);` OU ler `usage_log` direto. Não bloqueia (billing dormente).
+- **View `current_month_usage`** (migration 002): **CORRIGIDO na seção 13** — recriada com
+  `security_invoker = on` (cada usuário só lê o próprio uso; RLS de `usage_log` passa a ser respeitada).
+  Era um vazamento cross-tenant de contadores de uso. Comentário enganoso removido.
 - `api/fundamentals-history.ts` não passa pelo gate (não é LLM) embora `"fundamentals-history"` exista
   em `PAYWALLED_FEATURES` — só os endpoints `/api/ai` são gateados. Decisão consciente (dado, não IA).
 
@@ -452,3 +452,49 @@ Após a auth base, duas melhorias de UX (também via TDD):
 
 **Validação 12.4:** `tsc -b` ✅ · `npm run test:run` → **648/648** (71 files) ✅ · `npm run build` ✅ ·
 lint dos arquivos novos + 9 telas limpo.
+
+---
+
+## 13. Sessão 2026-05-29 (fim) — Validação consolidada + push GitHub + UX de simulação
+
+> Contexto: esta passagem rodou em paralelo a um agente que expandiu o escopo bem além de "billing"
+> (cache IA, semantic cache, auth email+senha, tutorial hints, mexidas em telas e no core). O trabalho
+> foi **validado em conjunto e empurrado pro GitHub** a pedido. Histórico ficou misturado por frente —
+> reorganizar em PRs separados é opcional e pode ser feito agora que está salvo no remoto.
+
+### 13.1 UX — fluxo de ordem explícito como SIMULAÇÃO (paper trading) — commit `d7da7aa`
+O Praxia é ferramenta de **análise**, não corretora; o fluxo de compra/venda dava a entender compra
+real (clareza + risco CVM). Mudanças:
+- `ScreenOrder` / `ScreenOrderReview`: header "Simular compra/venda", **banner amarelo "SIMULAÇÃO"**
+  ("operação fictícia para treino — sem dinheiro real nem corretora, só atualiza a carteira no app"),
+  botões "Revisar simulação" / "Confirmar simulação", subtítulos explícitos.
+- `ScreenStockDetail` + `QuickWatch`: botões de entrada → "Simular compra" / "Simular venda".
+- Os rótulos COMPRAR/SEGURAR/VENDER das análises **ficaram intactos** (é o veredito da análise — função do app).
+
+### 13.2 Correção do RLS (ver 11.3)
+`002_billing.sql`: view `current_month_usage` recriada com `security_invoker = on`; comentário enganoso
+("herda RLS por padrão") corrigido.
+
+### 13.3 Validação consolidada de toda a árvore
+- `npm run build` ✅ (index ~613 KB; warning de chunk >500KB pré-existente).
+- `npm run test:run` → **655/655** (72 files) ✅.
+- `npm run coverage` → global **72,07% linhas / 72,07% stmts / 88,57% funcs / 75,44% branches** (≥ 70%).
+- `npm run lint` → **baseline pré-existente** (13 erros `any` antigos + warnings `unused eslint-disable`
+  auto-fixáveis; sem regressão introduzida).
+
+**Lacunas de cobertura conhecidas (0% — testar quando a árvore estabilizar):** `useSubscription`,
+`checkoutClient`, `supabaseBilling` (billing client), `rebalance.ts` (Fase 5), `screener.ts` (~18%),
+`useWeeklyDigest`.
+
+### 13.4 Commit + push pro GitHub
+- Consolidado no commit **`db68467`** (53 arquivos): billing dormente + cache IA (`_aicache` durable +
+  `_semanticCache`, migrations 003/004 + `supabase/functions`) + migração OpenRouter + auth email+senha
+  + tutorial hints + UX de simulação + fix de RLS.
+- **Push:** branch **`feat/billing-dormante`** → `origin` (github.com/buga2023/AnalisedeprecodeAcoes).
+  PR: https://github.com/buga2023/AnalisedeprecodeAcoes/pull/new/feat/billing-dormante
+- **NÃO mergeado na `main`** — fica a critério abrir o PR. Branch trackeia `origin/feat/billing-dormante`.
+
+### 13.5 Pendente pra LIGAR a cobrança (recap dos bloqueadores externos)
+1. **Credenciais MP de TEST** antes de `BILLING_ENABLED=true` — as atuais são de produção (cobram de verdade).
+2. Rodar migrations **002 (com fix RLS) + 003 + 004** no Supabase Dashboard.
+3. Registrar webhook `…/api/mp-webhook` no painel MP + salvar `MERCADO_PAGO_WEBHOOK_SECRET`.
