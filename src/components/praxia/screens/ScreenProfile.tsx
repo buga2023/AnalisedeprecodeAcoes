@@ -5,7 +5,7 @@ import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { Icon } from "../Icon";
 import { PraMark } from "../PraMark";
-import type { AIProvider, AIProviderConfig, InvestorProfile } from "@/types/stock";
+import type { AIProvider, AIProviderConfig, InvestorProfile, Plan } from "@/types/stock";
 import {
   riskLabel,
   horizonLabel,
@@ -37,6 +37,9 @@ interface ScreenProfileProps {
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
   onOpenDeleteAccount?: () => void;
+  plan?: Plan;
+  /** Quando presente, mostra "Gerenciar plano" (billing ligado). */
+  onManagePlan?: () => void;
   onLogout: () => void;
   onClearLocalData: () => void;
 }
@@ -58,6 +61,8 @@ export function ScreenProfile({
   onOpenPrivacy,
   onOpenTerms,
   onOpenDeleteAccount,
+  plan = "free",
+  onManagePlan,
   onLogout,
   onClearLocalData,
 }: ScreenProfileProps) {
@@ -309,6 +314,18 @@ export function ScreenProfile({
             />
           )}
         </PraxiaCard>
+
+        {/* Plano (billing) — só aparece quando billing está ligado */}
+        {onManagePlan && (
+          <PraxiaCard padding={16}>
+            <SettingLabel label="Plano" sub={plan === "pro" ? "Praxia Pro ativo" : "Free · 10 consultas IA/mês"} />
+            <div style={{ marginTop: 12 }}>
+              <ToolButton accent={accent} onClick={onManagePlan} icon={<Icon.star size={14} color={accent} />}>
+                {plan === "pro" ? "Gerenciar assinatura" : "Assinar Praxia Pro"}
+              </ToolButton>
+            </div>
+          </PraxiaCard>
+        )}
 
         {/* Ferramentas */}
         {(onOpenBatchValuation || onOpenActivity || onOpenDividends || onOpenRebalance) && (

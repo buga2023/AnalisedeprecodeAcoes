@@ -2,6 +2,7 @@ import type { InvestorProfile } from "@/types/stock";
 import type { WorldNewsTopicBundle } from "./context";
 import { PRAXIA_SYSTEM_PROMPT, JSON_ONLY_SUFFIX } from "./praxiaPrompt";
 import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
 
 /**
  * Resumo IA de um bundle de notícias (um tópico) — passa pelo /api/ai como
@@ -143,7 +144,7 @@ Use no maximo 5 alvos. ${JSON_ONLY_SUFFIX}`;
   try {
     response = await fetch(AI_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
       body: JSON.stringify({
         messages: [
           { role: "system", content: PRAXIA_SYSTEM_PROMPT },
@@ -152,6 +153,7 @@ Use no maximo 5 alvos. ${JSON_ONLY_SUFFIX}`;
         temperature: 0.4,
         max_tokens: 900,
         response_format: { type: "json_object" },
+        feature: "classify-news",
       }),
       signal: controller.signal,
     });
@@ -163,6 +165,8 @@ Use no maximo 5 alvos. ${JSON_ONLY_SUFFIX}`;
     throw e;
   }
   clearTimeout(timeoutId);
+
+  await throwIfPaywalled(response, "classify-news");
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

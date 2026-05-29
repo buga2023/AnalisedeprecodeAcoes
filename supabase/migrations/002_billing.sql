@@ -110,7 +110,13 @@ grant execute on function public.increment_usage(uuid, text) to authenticated;
 -- 4) View pra leitura agregada do mês corrente (uso opcional pelo client)
 -- ─────────────────────────────────────────────────────────────────────────
 
-create or replace view public.current_month_usage as
+-- IMPORTANTE: views NAO herdam RLS por padrao — rodam com os privilegios do
+-- dono (postgres), o que VAZARIA o uso de todos os usuarios. `security_invoker`
+-- (Postgres 15+, suportado pelo Supabase) faz a view rodar como o usuario que
+-- consulta, entao a RLS de `usage_log` (owner-only select) e respeitada e cada
+-- um so enxerga o proprio uso.
+create or replace view public.current_month_usage
+  with (security_invoker = on) as
   select
     user_id,
     sum(count) as total_this_month,
@@ -119,5 +125,4 @@ create or replace view public.current_month_usage as
   where month = to_char((now() at time zone 'utc'), 'YYYY-MM')
   group by user_id;
 
--- Herda RLS da tabela base por padrao no Supabase.
 grant select on public.current_month_usage to authenticated;

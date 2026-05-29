@@ -7,6 +7,7 @@ import { Icon } from "../Icon";
 import { PraMark } from "../PraMark";
 import { StatusTag } from "../Tag";
 import { NewsFeedCard } from "../NewsFeedCard";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import { useWorldNews } from "@/hooks/useWorldNews";
 import { useNewsFeed } from "@/hooks/useNewsFeed";
 import {
@@ -161,6 +162,8 @@ export function ScreenNews({ accent = PraxiaTokens.accent, profile, stocks, onBa
             <Icon.refresh size={16} color={T.ink70} />
           </GlassButton>
         </div>
+
+        <FeatureHintBanner hintKey="news" accent={accent} />
 
         {/* View mode toggle: Feed | Tópicos */}
         <div

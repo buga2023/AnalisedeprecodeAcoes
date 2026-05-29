@@ -258,6 +258,20 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
 
       {analise && !loading && (
         <>
+          {/* Deixa explícito: é um sinal de valuation/fundamentos, NÃO uma ordem
+              de compra nem recomendação personalizada (sensibilidade CVM 14). */}
+          <div
+            style={{
+              fontFamily: T.mono,
+              fontSize: 9,
+              color: T.ink50,
+              letterSpacing: 0.7,
+              textTransform: "uppercase",
+              marginBottom: 5,
+            }}
+          >
+            Sinal fundamentalista · não é ordem de compra
+          </div>
           <div
             style={{
               display: "flex",

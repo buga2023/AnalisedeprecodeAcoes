@@ -172,7 +172,10 @@ describe("fetchAIInsights", () => {
 });
 
 describe("analisarAcaoComIA", () => {
-  it("normaliza recomendação inválida para SEGURAR e garante arrays", async () => {
+  it("deriva recomendação deterministicamente (ignora a do LLM) e garante arrays", async () => {
+    // O núcleo é profile-agnostic; a recomendação vem de derivarRecomendacao
+    // (score + MoS + perfil), não mais do LLM. Aqui: score 80 + MoS 40% sem
+    // perfil → COMPRAR, independentemente do que o mock "recomendaria".
     vi.stubGlobal(
       "fetch",
       makeContextFetch({
@@ -201,7 +204,7 @@ describe("analisarAcaoComIA", () => {
         netMargin: 0.1,
       }
     );
-    expect(out.recomendacao).toBe("SEGURAR");
+    expect(out.recomendacao).toBe("COMPRAR");
     expect(Array.isArray(out.redFlags)).toBe(true);
     expect(out.fontes).toEqual(expect.arrayContaining(["Yahoo Finance", "calculo do app"]));
   });

@@ -54,7 +54,7 @@ describe("api/ai handler", () => {
   });
 
   it("responde 400 quando messages está ausente", async () => {
-    vi.stubEnv("GROQ_API_KEY", "k");
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
     const handler = await loadHandler();
     const req = reqWithUniqueIp({ method: "POST", body: {} });
     const res = makeRes();
@@ -80,6 +80,53 @@ describe("api/ai handler", () => {
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
     expect((res.mock.body as { provider: string }).provider).toBe("groq");
+  });
+
+  it("openrouter: é o provider default e encaminha quando chave presente", async () => {
+    // Sem AI_PROVIDER setado → default resolve para openrouter.
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
+      )
+    );
+    const handler = await loadHandler();
+    const req = reqWithUniqueIp({
+      method: "POST",
+      body: { messages: [{ role: "user", content: "x" }] },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.mock.statusCode).toBe(200);
+    expect((res.mock.body as { provider: string }).provider).toBe("openrouter");
+  });
+
+  it("cai para outro provider em 429 (openrouter quota → groq)", async () => {
+    // OpenRouter (default) e Groq configurados; openrouter devolve 429 (quota
+    // free estourada), groq responde 200 → resposta servida pelo groq.
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    vi.stubEnv("GROQ_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.includes("openrouter.ai")) {
+          return new Response(JSON.stringify({ error: { message: "Provider returned error" } }), { status: 429 });
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { content: "via groq" } }] }), { status: 200 });
+      })
+    );
+    const handler = await loadHandler();
+    const req = reqWithUniqueIp({
+      method: "POST",
+      body: { messages: [{ role: "user", content: "x" }] },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.mock.statusCode).toBe(200);
+    expect((res.mock.body as { provider: string; content: string }).provider).toBe("groq");
+    expect((res.mock.body as { content: string }).content).toBe("via groq");
   });
 
   it("retorna 401 quando upstream responde com 401", async () => {

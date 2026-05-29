@@ -61,6 +61,10 @@ const PortfolioInsightsModal = lazy(() =>
 const OptimizeDividendsModal = lazy(() =>
   import("@/components/praxia/OptimizeDividendsModal").then((m) => ({ default: m.OptimizeDividendsModal }))
 );
+const ScreenBilling = lazy(() =>
+  import("@/components/praxia/screens/ScreenBilling").then((m) => ({ default: m.ScreenBilling }))
+);
+import { PaywallModal } from "@/components/praxia/PaywallModal";
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { useInvestorProfile } from "@/hooks/useInvestorProfile";
 import { useTransactions } from "@/hooks/useTransactions";
@@ -69,16 +73,21 @@ import { useAIProvider } from "@/hooks/useAIProvider";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useAuth } from "@/hooks/useAuth";
 import { useDividendCalendar } from "@/hooks/useDividendCalendar";
+import { useSubscription } from "@/hooks/useSubscription";
 import { totalPortfolioValue } from "@/lib/portfolio";
+import { setAIAccessToken, setPaywallHandler } from "@/lib/aiAuth";
 import type { RebalanceOrder } from "@/lib/rebalance";
 import type {
   AIProviderConfig,
   OrderType,
+  PaywallRequiredPayload,
   Stock,
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "rebalance" | "privacy" | "terms" | "delete-account";
+const BILLING_ENABLED = import.meta.env.VITE_BILLING_ENABLED === "true";
+
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "rebalance" | "privacy" | "terms" | "delete-account" | "billing";
 
 function ScreenFallback() {
   return (
@@ -107,8 +116,17 @@ interface OrderDraft {
   type: TransactionType;
 }
 
-function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => void }) {
+function PraxiaApp({ username, userId, onLogout }: { username: string; userId: string | null; onLogout: () => void }) {
   const { accent, setAccent, tone, setTone } = useUIPreferences();
+  const { plan, subscription, usageThisMonth } = useSubscription(userId);
+  const [paywallPayload, setPaywallPayload] = useState<PaywallRequiredPayload | null>(null);
+
+  // Registra o handler global de paywall — qualquer 402 nas libs de IA abre o
+  // PaywallModal sem precisar threadar callback por todos os call sites.
+  useEffect(() => {
+    setPaywallHandler((payload) => setPaywallPayload(payload));
+    return () => setPaywallHandler(null);
+  }, []);
   const { profile, saveProfile, reset: resetProfile } = useInvestorProfile();
   const { stocks, addStock, applyTransaction, toggleFavorite, error, clearError } =
     useStockQuotes();
@@ -361,9 +379,23 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onOpenPrivacy={() => setScreen("privacy")}
           onOpenTerms={() => setScreen("terms")}
           onOpenDeleteAccount={() => setScreen("delete-account")}
+          plan={plan}
+          onManagePlan={BILLING_ENABLED ? () => setScreen("billing") : undefined}
           onLogout={onLogout}
           onClearLocalData={clearAllLocal}
         />
+      )}
+
+      {screen === "billing" && (
+        <Suspense fallback={<ScreenFallback />}>
+          <ScreenBilling
+            plan={plan}
+            subscription={subscription}
+            usageThisMonth={usageThisMonth}
+            accent={accent}
+            onBack={() => setScreen("profile")}
+          />
+        </Suspense>
       )}
 
       <Suspense fallback={<ScreenFallback />}>
@@ -584,6 +616,12 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
         </Suspense>
       )}
 
+      <PaywallModal
+        payload={paywallPayload}
+        accent={accent}
+        onClose={() => setPaywallPayload(null)}
+      />
+
       <CookieConsentBanner
         accent={accent}
         onOpenPrivacy={() => setScreen("privacy")}
@@ -593,7 +631,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
 }
 
 function App() {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, session, loading: authLoading, passwordRecovery, signOut } = useAuth();
   const [bootStep, setBootStep] = useState<"onboardingA" | "onboardingB" | "login" | "app">(() => {
     const hasProfile = !!localStorage.getItem("praxia-investor-profile");
     if (hasProfile) return "login";
@@ -604,6 +642,11 @@ function App() {
   useEffect(() => {
     if (user && bootStep !== "app") setBootStep("app");
   }, [user, bootStep]);
+
+  // Registra o JWT pra as chamadas /api/ai (gate de paywall server-side).
+  useEffect(() => {
+    setAIAccessToken(session?.access_token ?? null);
+  }, [session]);
 
   // Loading inicial — evita flash do LoginScreen enquanto o supabase-js
   // recupera a sessao do localStorage.
@@ -627,12 +670,19 @@ function App() {
     );
   }
 
+  // Link de reset clicado: a sessao de recuperacao ja autentica, entao
+  // forcamos a tela de nova senha antes de cair na app.
+  if (passwordRecovery) {
+    return <LoginScreen recoveryMode />;
+  }
+
   if (user) {
     // Username friendly: parte antes do @ no email.
     const friendly = user.email ? user.email.split("@")[0] : "voce";
     return (
       <PraxiaApp
         username={friendly}
+        userId={user.id}
         onLogout={async () => {
           await signOut();
           setBootStep("login");

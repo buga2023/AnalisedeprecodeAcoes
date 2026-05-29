@@ -256,6 +256,18 @@ export function ScreenBatchValuation({ accent = PraxiaTokens.accent, onBack }: S
               trailing="Exportar XLSX"
               onTrailingClick={() => exportResults(rows)}
             />
+            <div
+              style={{
+                fontFamily: T.body,
+                fontSize: 11,
+                color: T.ink50,
+                lineHeight: 1.4,
+                margin: "0 4px 8px",
+              }}
+            >
+              “Comprar/Caro” é leitura de valuation (preço vs. valor justo), não ordem de
+              compra. Conteúdo educacional — a decisão é sua.
+            </div>
             <PraxiaCard padding={4}>
               {rows.map((row, i) => (
                 <ResultRow key={`${row.ticker}-${i}`} row={row} isLast={i === rows.length - 1} />

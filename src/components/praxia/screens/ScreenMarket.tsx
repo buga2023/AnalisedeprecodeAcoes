@@ -9,6 +9,7 @@ import { StockAvatar } from "../StockAvatar";
 import { SectionHeader } from "../SectionHeader";
 import { HoldingRow } from "../HoldingRow";
 import { ScreenMarketScreener } from "./ScreenMarketScreener";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import type { Stock, InvestorProfile, MarketType } from "@/types/stock";
 import { fetchStockQuote, TickerLookupError } from "@/lib/api";
 import { detectMarket } from "@/lib/stockMeta";
@@ -211,6 +212,8 @@ export function ScreenMarket({
             </div>
           </div>
         </div>
+
+        <FeatureHintBanner hintKey="market" accent={accent} />
 
         {/* search */}
         <form

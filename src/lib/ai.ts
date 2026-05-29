@@ -15,6 +15,9 @@ import { PRAXIA_SYSTEM_PROMPT } from "./praxiaPrompt";
 import { buildOptionalChainsBlock } from "./transmissionChains";
 import { SCREENER_SECTORS, type ScreenerFilter, type ScreenerSortBy } from "./screener";
 import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
+import { derivarRecomendacao } from "./calculators";
+import type { PaywalledFeature } from "@/types/stock";
 
 // Re-exporta pra compatibilidade com imports antigos. Fonte unica em praxiaPrompt.ts.
 export { PRAXIA_SYSTEM_PROMPT };
@@ -86,6 +89,12 @@ function describeProfile(profile: InvestorProfile | null | undefined): string {
  * Mantemos so um ponteiro aqui pra economizar tokens — o LLM ja tem o contexto.
  */
 const RULES_REMINDER = `Siga as <rules> e o <output_format> do system: comece com perfil, cite [n] com fonte verificavel em "fontes", nunca invente. Decisao final e do usuario.`;
+
+// Variante SEM "comece com perfil" — para a análise per-stock, cujo núcleo é
+// profile-agnostic (cacheável/compartilhado). A moldura de perfil e a
+// recomendação vêm depois, deterministicamente (buildJustificativaTemplate +
+// derivarRecomendacao), preservando a personalização sem acoplar o prompt.
+const RULES_REMINDER_NEUTRAL = `Siga as <rules> e o <output_format> do system: cite [n] com fonte verificavel em "fontes", nunca invente. Foque em fatos da empresa e contexto macro/setorial — NAO faca recomendacao de compra/venda nem mencione perfil de investidor.`;
 
 /** Dados quantitativos da acao usados como insumo para a analise. */
 export interface DadosQuantitativos {
@@ -321,8 +330,6 @@ Analise a acao ${ticker} (${nomeEmpresa}) levando em conta fundamentos, contexto
 macroeconomico (SELIC, IPCA, atividade), eventos politicos recentes e o
 ambiente social/setorial relevante.
 
-${describeProfile(profile)}
-
 ${
   dadosRI.conteudo
     ? `=== DADOS COLETADOS DE RI (${dadosRI.fonte}) ===
@@ -358,11 +365,11 @@ INSTRUCOES DE RENTABILIDADE:
 - Se ROIC > custo de capital implicito (>= SELIC + premio de risco ~5pp), e um
   bom alocador de capital — vale como "PRO" na tese.
 - Se ROI da posicao do usuario estiver muito acima/abaixo da media historica do
-  papel, considere se faz sentido realizar/aportar dado o perfil do usuario.
+  papel, comente o que isso sinaliza sobre o momento do papel.
 
 ${contextBlock}
 
-${RULES_REMINDER}
+${RULES_REMINDER_NEUTRAL}
 
 INSTRUCOES ADICIONAIS:
 - Ao mencionar eventos politicos/sociais/macro, SEMPRE cite a URL exata da
@@ -376,12 +383,11 @@ INSTRUCOES ADICIONAIS:
 Retorne SOMENTE um JSON valido, sem markdown:
 {
   "resumoTrimestral": "Resumo 2-3 frases combinando resultado + macro/politica relevante, com [n]",
-  "recomendacao": "COMPRAR" | "SEGURAR" | "VENDER",
   "justificativa": "1-2 frases CURTAS sobre o angulo qualitativo (macro, noticia, setor, regulacao) que reforcam ou contradizem a tese. NAO repita Graham/Score/MoS — o app ja exibe esses numeros deterministicamente acima. Foque no que SO o LLM consegue dizer.",
   "redFlags": ["alerta com [n] referenciando fonte (noticia, macro, RI ou calculo)"],
   "comparacaoTrimestre": "Comparacao com trimestre anterior + impacto macro em 1-2 frases com [n]",
   "periodoAnalisado": "ex: 3T24 vs 2T24",
-  "fontes": ["Yahoo Finance", "Banco Central do Brasil (SGS)", "calculo do app", "perfil do usuario", "https://noticia...", "${dadosRI.fonte || ""}"]
+  "fontes": ["Yahoo Finance", "Banco Central do Brasil (SGS)", "calculo do app", "https://noticia...", "${dadosRI.fonte || ""}"]
 }
 
 Responda em portugues brasileiro e NUNCA use emojis. Se faltar fonte para algo,
@@ -391,10 +397,13 @@ DEVE ter o link correspondente no array "fontes".`;
   const analise = await callAIServerless<AnaliseIA>(prompt, "json_object", "analise");
   analise.fonte = dadosRI.fonte || "";
 
-  const recsValidas = ["COMPRAR", "SEGURAR", "VENDER"];
-  if (!recsValidas.includes(analise.recomendacao)) {
-    analise.recomendacao = "SEGURAR";
-  }
+  // Recomendação NÃO vem mais do LLM (prompt é profile-agnostic p/ cache
+  // compartilhado): derivada deterministicamente de score + MoS + perfil.
+  analise.recomendacao = derivarRecomendacao(
+    dados.score,
+    dados.margemSeguranca * 100,
+    profile?.risk
+  );
   if (!Array.isArray(analise.redFlags)) {
     analise.redFlags = [];
   }
@@ -861,6 +870,19 @@ Retorne SOMENTE JSON, sem markdown. Exemplo de formato (omita as chaves que nao 
 
 // PRAXIA_SYSTEM_PROMPT mestre vive em src/lib/praxiaPrompt.ts (re-exportado no topo).
 
+/** Capability interna → feature de billing (gate/uso). */
+const FEATURE_BY_CAPABILITY: Record<
+  "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" | "screener",
+  PaywalledFeature
+> = {
+  analise: "ai-analysis",
+  insights: "portfolio-insights",
+  comparacao: "compare",
+  news_topic: "classify-news",
+  news_feed: "classify-news",
+  screener: "screener",
+};
+
 async function callAIServerless<T>(
   prompt: string,
   responseFormat: string = "text",
@@ -878,13 +900,15 @@ async function callAIServerless<T>(
   if (!gate.allowed) {
     const seconds = Math.ceil(gate.retryAfterMs / 1000);
     throw new Error(
-      `Limite de chamadas IA atingido (Groq free tier). Aguarde ~${seconds}s.`
+      `Limite de chamadas IA atingido. Aguarde ~${seconds}s.`
     );
   }
 
+  // Feature de billing derivada da capability (granularidade do paywall/uso).
+  const feature = FEATURE_BY_CAPABILITY[capability];
   const response = await fetch(AI_API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
     body: JSON.stringify({
       messages: [
         { role: "system", content: systemPrompt },
@@ -893,8 +917,11 @@ async function callAIServerless<T>(
       temperature: 0.7,
       max_tokens: 1200,
       response_format: { type: responseFormat },
+      feature,
     }),
   });
+
+  await throwIfPaywalled(response, feature);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

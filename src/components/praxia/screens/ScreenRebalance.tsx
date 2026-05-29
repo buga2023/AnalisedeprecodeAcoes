@@ -4,6 +4,7 @@ import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { GlassButton } from "../GlassButton";
 import { Icon } from "../Icon";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import type { Stock, InvestorProfile } from "@/types/stock";
 import {
   generateRebalancePlan,
@@ -186,6 +187,8 @@ export function ScreenRebalance({
             </div>
           </div>
         </div>
+
+        <FeatureHintBanner hintKey="rebalance" accent={accent} />
 
         {/* Empty state */}
         {!hasPositions && (

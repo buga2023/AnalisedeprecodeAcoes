@@ -3,6 +3,7 @@ import type { ChatMessage, InvestorProfile, Stock } from "@/types/stock";
 import { riskLabel, horizonLabel, interestLabel } from "@/hooks/useInvestorProfile";
 import { PRAXIA_SYSTEM_PROMPT, CHAT_OUTPUT_SUFFIX } from "@/lib/praxiaPrompt";
 import { checkRateLimit, estimateTokens, recordCall } from "@/lib/aiTelemetry";
+import { aiAuthHeaders, throwIfPaywalled } from "@/lib/aiAuth";
 
 const STORAGE_KEY = "praxia-pra-chat";
 const PROFILE_MARKER = /\[PROFILE\]\s*(\{[\s\S]*?\})\s*\[\/PROFILE\]/;
@@ -302,15 +303,19 @@ export function usePraChat({ tone, profile, stocks, totalValue, onProfileDetecte
 
         const response = await fetch("/api/ai", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
           body: JSON.stringify({
             messages: apiMessages,
             // Temperatura mais baixa pra seguir melhor o reasoning_chain.
             temperature: 0.4,
             // max_tokens calibrado pra <thinking> compacto (3 bullets) + resposta + Fontes.
             max_tokens: 900,
+            // Sinaliza o servidor pra aplicar o cache semântico (L3) + gate.
+            feature: "chat",
           }),
         });
+
+        await throwIfPaywalled(response, "ai-analysis");
 
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({}));

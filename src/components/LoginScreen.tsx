@@ -5,6 +5,7 @@ import { PraxiaLogo } from "@/components/praxia/PraxiaLogo";
 import { Icon } from "@/components/praxia/Icon";
 import { useAuth } from "@/hooks/useAuth";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { humanizeAuthError } from "@/lib/authErrors";
 
 interface LoginScreenProps {
   /** Quando true, abre direto no fluxo de definir nova senha (link de reset clicado). */
@@ -64,7 +65,7 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
       }
       // Sucesso com sessao → App.tsx detecta o user e troca de tela sozinho.
     } else {
-      setError(result.error);
+      setError(humanizeAuthError(result.error));
     }
     setSubmitting(false);
   }
@@ -76,7 +77,7 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
     setNotice("");
     const result = await signInWithMagicLink(email);
     if (result.ok) setStep("sent");
-    else setError(result.error);
+    else setError(humanizeAuthError(result.error));
     setSubmitting(false);
   }
 
@@ -90,7 +91,7 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
     setNotice("");
     const result = await resetPassword(email);
     if (result.ok) setStep("reset-sent");
-    else setError(result.error);
+    else setError(humanizeAuthError(result.error));
     setSubmitting(false);
   }
 
@@ -109,7 +110,7 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
     setError("");
     const result = await updatePassword(password);
     // Sucesso → passwordRecovery reseta no hook e o App.tsx cai na app.
-    if (!result.ok) setError(result.error);
+    if (!result.ok) setError(humanizeAuthError(result.error));
     setSubmitting(false);
   }
 

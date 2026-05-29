@@ -8,6 +8,7 @@ import { SectionHeader } from "../SectionHeader";
 import { HoldingRow } from "../HoldingRow";
 import { PortfolioScoreHero } from "../PortfolioScoreHero";
 import { PortfolioInsightsContent } from "../PortfolioInsightsContent";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import { DeltaPill } from "../Tag";
 import type { InvestorProfile, Stock } from "@/types/stock";
 import {
@@ -157,6 +158,8 @@ export function ScreenAnalysis({
             )}
           </button>
         </div>
+
+        <FeatureHintBanner hintKey="analysis" accent={accent} />
 
         {owned.length === 0 ? (
           <PraxiaCard raised padding={20}>
