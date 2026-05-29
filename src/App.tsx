@@ -43,6 +43,9 @@ const ScreenAnalysis = lazy(() =>
 const ScreenDividends = lazy(() =>
   import("@/components/praxia/screens/ScreenDividends").then((m) => ({ default: m.ScreenDividends }))
 );
+const ScreenRebalance = lazy(() =>
+  import("@/components/praxia/screens/ScreenRebalance").then((m) => ({ default: m.ScreenRebalance }))
+);
 const ScreenLegalDoc = lazy(() =>
   import("@/components/praxia/screens/ScreenLegalDoc").then((m) => ({ default: m.ScreenLegalDoc }))
 );
@@ -67,6 +70,7 @@ import { useAlerts } from "@/hooks/useAlerts";
 import { useAuth } from "@/hooks/useAuth";
 import { useDividendCalendar } from "@/hooks/useDividendCalendar";
 import { totalPortfolioValue } from "@/lib/portfolio";
+import type { RebalanceOrder } from "@/lib/rebalance";
 import type {
   AIProviderConfig,
   OrderType,
@@ -74,7 +78,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "privacy" | "terms" | "delete-account";
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "rebalance" | "privacy" | "terms" | "delete-account";
 
 function ScreenFallback() {
   return (
@@ -217,6 +221,24 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     setScreen("activity");
   }, [activeStock, orderDraft, applyTransaction, record]);
 
+  const executeRebalanceOrder = useCallback(
+    async (order: RebalanceOrder): Promise<boolean> => {
+      const ok = await applyTransaction(order.ticker, order.action, order.shares, order.price);
+      if (!ok) return false;
+      record({
+        ticker: order.ticker,
+        type: order.action,
+        orderType: "Mercado",
+        shares: order.shares,
+        price: order.price,
+        total: order.shares * order.price,
+        fee: 0,
+      });
+      return true;
+    },
+    [applyTransaction, record]
+  );
+
   const handleProviderSave = useCallback(
     (config: AIProviderConfig | null) => {
       if (config) setProviderConfig(config);
@@ -335,6 +357,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onOpenBatchValuation={() => setScreen("batch")}
           onOpenActivity={() => setScreen("activity")}
           onOpenDividends={() => setScreen("dividends")}
+          onOpenRebalance={() => setScreen("rebalance")}
           onOpenPrivacy={() => setScreen("privacy")}
           onOpenTerms={() => setScreen("terms")}
           onOpenDeleteAccount={() => setScreen("delete-account")}
@@ -392,6 +415,17 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
               setOptimizeAnnual(annual);
               setOptimizeOpen(true);
             }}
+          />
+        )}
+
+        {screen === "rebalance" && (
+          <ScreenRebalance
+            accent={accent}
+            stocks={stocks}
+            profile={profile}
+            onBack={() => setScreen("profile")}
+            onExecuteOrder={executeRebalanceOrder}
+            onAddStock={() => setScreen("market")}
           />
         )}
 

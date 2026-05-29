@@ -820,3 +820,118 @@ async function callAIServerless<T>(
     throw new Error("Erro ao interpretar resposta da IA. Tente novamente.");
   }
 }
+
+/* ─── Fase 5: Rebalanceador ──────────────────────────────────────────────
+ * Tipos e prompt locais (sem novo import no topo) para manter este bloco
+ * isolado e fácil de mesclar. A matemática vive em `lib/rebalance.ts`; aqui a
+ * IA só comenta o plano JÁ calculado — nunca decide quantidades. */
+
+/** Resumo compacto de um setor para o prompt (IDs + métricas, não payload bruto). */
+export interface RebalanceSectorSummary {
+  sector: string;
+  currentPct: number;
+  targetPct: number;
+}
+
+/** Ordem já calculada deterministicamente, descrita para a IA. */
+export interface RebalanceOrderSummary {
+  ticker: string;
+  action: "buy" | "sell";
+  shares: number;
+  estValue: number;
+  sector: string;
+  score: number;
+}
+
+export interface RebalanceExplainInput {
+  totalValue: number;
+  sectors: RebalanceSectorSummary[];
+  orders: RebalanceOrderSummary[];
+  unmetSectors: { sector: string; neededBRL: number }[];
+}
+
+export interface RebalanceExplicacaoIA {
+  resumo: string;
+  /** Armadilhas/avisos (ex.: vender antes do ex-dividendo, custo de IR). */
+  alertas: string[];
+  fontes: string[];
+}
+
+/**
+ * Explica em linguagem natural um plano de rebalanceamento determinístico,
+ * destacando armadilhas (ex.: vender antes do ex-dividendo, gerar IR). Recebe
+ * só o resumo (setores + ordens), nunca a carteira inteira — frugal em tokens.
+ */
+export async function explicarRebalanceamento(
+  input: RebalanceExplainInput,
+  profile: InvestorProfile | null = null
+): Promise<RebalanceExplicacaoIA> {
+  const sectorLines = input.sectors
+    .map(
+      (s) =>
+        `- ${s.sector}: atual ${s.currentPct.toFixed(0)}% → alvo ${s.targetPct.toFixed(0)}%`
+    )
+    .join("\n");
+
+  const orderLines =
+    input.orders.length > 0
+      ? input.orders
+          .map(
+            (o) =>
+              `- ${o.action === "buy" ? "COMPRAR" : "VENDER"} ${o.shares} ${o.ticker} ` +
+              `(~R$${o.estValue.toFixed(2)}, setor ${o.sector}, score ${o.score}/100)`
+          )
+          .join("\n")
+      : "(Nenhuma ordem — carteira já alinhada aos alvos.)";
+
+  const unmetLines =
+    input.unmetSectors.length > 0
+      ? input.unmetSectors
+          .map((u) => `- ${u.sector}: faltam ~R$${u.neededBRL.toFixed(2)} e não há ativo desse setor na carteira`)
+          .join("\n")
+      : "(nenhum)";
+
+  const prompt = `Voce e Pra, analista da Praxia especializada em B3. O usuario quer
+rebalancear a carteira. As ORDENS abaixo JA foram calculadas deterministicamente
+pelo app (voce NAO recalcula quantidades). Explique o plano e aponte armadilhas.
+
+${describeProfile(profile)}
+
+Patrimonio total: R$${input.totalValue.toFixed(2)} (fonte: calculo do app)
+
+=== ALOCACAO SETORIAL (atual -> alvo) ===
+${sectorLines}
+
+=== ORDENS PROPOSTAS (ja calculadas) ===
+${orderLines}
+
+=== SETORES-ALVO SEM ATIVO NA CARTEIRA ===
+${unmetLines}
+
+${RULES_REMINDER}
+
+REGRAS DURAS:
+- Nao invente tickers nem quantidades. Comente APENAS as ordens acima.
+- "alertas": ate 3 armadilhas concretas (ex.: vender pode antecipar IR sobre lucro;
+  conferir data ex-dividendo antes de reduzir um pagador; custo de corretagem).
+- Se houver setor sem ativo, sugira no resumo adicionar um ativo daquele setor.
+
+Retorne SOMENTE um JSON valido, sem markdown:
+{
+  "resumo": "Comece com 'Pelo seu perfil [risco]...'. 2-3 frases explicando o racional do plano com referencias [1], [2].",
+  "alertas": ["armadilha 1 [n]", "armadilha 2 [n]"],
+  "fontes": ["calculo do app", "perfil do usuario"]
+}
+
+Responda em portugues brasileiro, sem emojis.`;
+
+  const result = await callAIServerless<RebalanceExplicacaoIA>(prompt, "json_object", "insights");
+
+  return {
+    resumo: result.resumo ?? "",
+    alertas: Array.isArray(result.alertas) ? result.alertas : [],
+    fontes: Array.isArray(result.fontes) && result.fontes.length > 0
+      ? result.fontes
+      : ["calculo do app", "perfil do usuario"],
+  };
+}
