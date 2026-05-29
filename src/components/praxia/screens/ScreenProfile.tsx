@@ -33,6 +33,7 @@ interface ScreenProfileProps {
   onOpenBatchValuation?: () => void;
   onOpenActivity?: () => void;
   onOpenDividends?: () => void;
+  onOpenRebalance?: () => void;
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
   onOpenDeleteAccount?: () => void;
@@ -53,6 +54,7 @@ export function ScreenProfile({
   onOpenBatchValuation,
   onOpenActivity,
   onOpenDividends,
+  onOpenRebalance,
   onOpenPrivacy,
   onOpenTerms,
   onOpenDeleteAccount,
@@ -309,10 +311,15 @@ export function ScreenProfile({
         </PraxiaCard>
 
         {/* Ferramentas */}
-        {(onOpenBatchValuation || onOpenActivity || onOpenDividends) && (
+        {(onOpenBatchValuation || onOpenActivity || onOpenDividends || onOpenRebalance) && (
           <PraxiaCard padding={16}>
             <SettingLabel label="Ferramentas" sub="Análises avançadas e importação" />
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {onOpenRebalance && (
+                <ToolButton accent={accent} onClick={onOpenRebalance} icon={<Icon.trend size={14} color={accent} />}>
+                  Rebalancear carteira
+                </ToolButton>
+              )}
               {onOpenDividends && (
                 <ToolButton accent={accent} onClick={onOpenDividends} icon={<Icon.invest size={14} color={accent} />}>
                   Calendário de dividendos
