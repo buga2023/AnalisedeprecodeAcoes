@@ -8,22 +8,24 @@ import { Sparkline } from "../Charts";
 import { StockAvatar } from "../StockAvatar";
 import { SectionHeader } from "../SectionHeader";
 import { HoldingRow } from "../HoldingRow";
+import { ScreenMarketScreener } from "./ScreenMarketScreener";
 import type { Stock, InvestorProfile, MarketType } from "@/types/stock";
 import { fetchStockQuote, TickerLookupError } from "@/lib/api";
 import { detectMarket } from "@/lib/stockMeta";
 import { riskLabel } from "@/hooks/useInvestorProfile";
 
-type Tab = "trending" | "para-voce" | "watchlist" | "B3" | "NASDAQ";
+type Tab = "trending" | "descobrir" | "para-voce" | "watchlist" | "B3" | "NASDAQ";
 
 const TAB_LABELS: Record<Tab, string> = {
   trending: "Em alta",
+  descobrir: "Descobrir",
   "para-voce": "Para você",
   watchlist: "Watchlist",
   B3: "B3",
   NASDAQ: "NASDAQ",
 };
 
-const TABS: Tab[] = ["trending", "para-voce", "watchlist", "B3", "NASDAQ"];
+const TABS: Tab[] = ["trending", "descobrir", "para-voce", "watchlist", "B3", "NASDAQ"];
 
 /** Tickers we always surface as discovery suggestions in each tab. */
 const DISCOVERY_B3 = [
@@ -418,6 +420,16 @@ export function ScreenMarket({
           ))}
         </div>
 
+        {/* Descobrir — screener fundamentalista (Fase 4) */}
+        {tab === "descobrir" ? (
+          <ScreenMarketScreener
+            profile={profile}
+            accent={accent}
+            ownedTickers={stocks.map((s) => s.ticker)}
+            onOpenStock={onOpenStock}
+          />
+        ) : (
+          <>
         {/* Pra curadoria strip */}
         {tab === "para-voce" && profile && (
           <PraxiaCard
@@ -564,6 +576,8 @@ export function ScreenMarket({
                 </div>
               </div>
             )}
+          </>
+        )}
           </>
         )}
       </div>

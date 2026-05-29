@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PraxiaTokens, fmt } from "../tokens";
 import { PraxiaBackground } from "../PraxiaBackground";
 import { GlassButton } from "../GlassButton";
@@ -76,6 +76,17 @@ export function ScreenAnalysis({
         .slice(0, 3),
     [stocks]
   );
+  const worstScore = useMemo(() => {
+    const owned_ = stocks.filter((s) => (s.quantity || 0) > 0);
+    if (owned_.length < 2) return null;
+    return owned_.slice().sort((a, b) => a.score - b.score)[0];
+  }, [stocks]);
+  const overweightTopStock = useMemo(() => {
+    if (!overweight) return null;
+    const inSector = owned.filter((s) => (s.sector ?? "Outros") === overweight.label);
+    if (inSector.length === 0) return null;
+    return inSector.slice().sort((a, b) => b.quantity * b.price - a.quantity * a.price)[0];
+  }, [overweight, owned]);
 
   return (
     <div
@@ -103,7 +114,7 @@ export function ScreenAnalysis({
               Análise
             </div>
             <div style={{ fontFamily: T.body, fontSize: 11, color: T.ink50 }}>
-              visão central da carteira
+              score, sinais e próximos passos
             </div>
           </div>
           <button
@@ -150,10 +161,10 @@ export function ScreenAnalysis({
         {owned.length === 0 ? (
           <PraxiaCard raised padding={20}>
             <div style={{ fontFamily: T.display, fontSize: 22, color: T.ink, fontWeight: 600 }}>
-              Adicione o primeiro ativo
+              Sem posições ainda
             </div>
             <div style={{ marginTop: 8, fontFamily: T.body, fontSize: 13, color: T.ink70, lineHeight: 1.55 }}>
-              A análise central precisa de posições com quantidade para calcular score, concentração e sugestões.
+              Adicione pelo menos um ativo com quantidade pra liberar score 0–100, concentração setorial e sugestões da IA.
             </div>
             <button
               onClick={onAddStock}
@@ -171,7 +182,7 @@ export function ScreenAnalysis({
                 cursor: "pointer",
               }}
             >
-              Adicionar ativo
+              Buscar primeiro ativo
             </button>
           </PraxiaCard>
         ) : (
@@ -186,13 +197,27 @@ export function ScreenAnalysis({
 
             <PraxiaCard padding={14}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                <MiniMetric label="Retorno" value={fmt.pct(ytdPct)} color={ytdPct >= 0 ? T.up : T.down} />
-                <MiniMetric label="Ativos" value={String(owned.length)} />
+                <MiniMetric
+                  label="Retorno"
+                  value={fmt.pct(ytdPct)}
+                  color={ytdPct >= 0 ? T.up : T.down}
+                  tip="Variação do valor de mercado vs. o custo total das suas compras (paper trading)."
+                />
+                <MiniMetric
+                  label="Ativos"
+                  value={String(owned.length)}
+                  tip="Quantidade de tickers únicos com posição > 0."
+                />
                 <MiniMetric
                   label="Setor líder"
-                  value={overweight ? `${overweight.pct.toFixed(0)}%` : "OK"}
-                  sub={overweight?.label}
+                  value={overweight ? `${overweight.pct.toFixed(0)}%` : "Balanceada"}
+                  sub={overweight?.label ?? "sem peso ≥ 40%"}
                   color={overweight ? T.warn : T.up}
+                  tip={
+                    overweight
+                      ? `${overweight.label} pesa ${overweight.pct.toFixed(0)}% da carteira. Concentração ≥ 40% reduz o score.`
+                      : "Nenhum setor passa de 40% — boa diversificação setorial."
+                  }
                 />
               </div>
             </PraxiaCard>
@@ -201,6 +226,19 @@ export function ScreenAnalysis({
               <SectionHeader label="Insights IA" />
               <PortfolioInsightsContent stocks={stocks} profile={profile} accent={accent} autoLoad />
             </div>
+
+            <NextStepsCard
+              accent={accent}
+              scoreTotal={score.total}
+              overweight={overweight}
+              overweightTopStock={overweightTopStock}
+              worstScore={worstScore}
+              bestScore={bestScore[0] ?? null}
+              onAddStock={onAddStock}
+              onOpenStock={onOpenStock}
+              onOpenAlerts={onOpenAlerts}
+              onOpenCompare={onOpenCompare}
+            />
 
             <div>
               <SectionHeader label="Movimentos de hoje" />
@@ -241,17 +279,68 @@ export function ScreenAnalysis({
   );
 }
 
-function MiniMetric({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+function MiniMetric({
+  label,
+  value,
+  sub,
+  color,
+  tip,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  color?: string;
+  tip?: string;
+}) {
   const T = PraxiaTokens;
+  const [open, setOpen] = useState(false);
   return (
     <div>
-      <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.ink50 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: T.body, fontSize: 10.5, color: T.ink50 }}>
+        <span>{label}</span>
+        {tip && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={`Sobre ${label}`}
+            style={{
+              width: 14,
+              height: 14,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 0,
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <Icon.info size={11} color={open ? (color ?? T.ink70) : T.ink30} />
+          </button>
+        )}
+      </div>
       <div style={{ marginTop: 3, fontFamily: T.mono, fontSize: 14, color: color ?? T.ink, fontWeight: 700 }}>
         {value}
       </div>
       {sub && (
         <div style={{ marginTop: 2, fontFamily: T.body, fontSize: 9.5, color: T.ink30, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {sub}
+        </div>
+      )}
+      {tip && open && (
+        <div
+          style={{
+            marginTop: 6,
+            padding: "6px 8px",
+            borderRadius: 6,
+            background: "rgba(255,255,255,0.04)",
+            border: `0.5px solid ${T.hairline}`,
+            fontFamily: T.body,
+            fontSize: 10.5,
+            color: T.ink70,
+            lineHeight: 1.45,
+          }}
+        >
+          {tip}
         </div>
       )}
     </div>
@@ -298,6 +387,141 @@ function ScoreRow({
       >
         <Icon.share size={13} color={T.ink50} />
       </button>
+    </div>
+  );
+}
+
+interface NextStep {
+  key: string;
+  label: string;
+  sub: string;
+  tone: "warn" | "down" | "neutral";
+  onClick: () => void;
+}
+
+function NextStepsCard({
+  accent,
+  scoreTotal,
+  overweight,
+  overweightTopStock,
+  worstScore,
+  bestScore,
+  onAddStock,
+  onOpenStock,
+  onOpenAlerts,
+  onOpenCompare,
+}: {
+  accent: string;
+  scoreTotal: number;
+  overweight: { label: string; pct: number } | null;
+  overweightTopStock: Stock | null;
+  worstScore: Stock | null;
+  bestScore: Stock | null;
+  onAddStock: () => void;
+  onOpenStock: (s: Stock) => void;
+  onOpenAlerts: () => void;
+  onOpenCompare: (ticker: string) => void;
+}) {
+  const T = PraxiaTokens;
+  const steps: NextStep[] = [];
+
+  if (overweight && overweightTopStock) {
+    steps.push({
+      key: "overweight",
+      label: `Reduzir exposição em ${overweight.label}`,
+      sub: `${overweightTopStock.ticker} é a maior posição do setor (${overweight.pct.toFixed(0)}% da carteira)`,
+      tone: "warn",
+      onClick: () => onOpenStock(overweightTopStock),
+    });
+  }
+
+  if (worstScore && bestScore && worstScore.ticker !== bestScore.ticker) {
+    steps.push({
+      key: "compare",
+      label: `Comparar ${worstScore.ticker} com ${bestScore.ticker}`,
+      sub: `pior score (${worstScore.score}) vs. melhor (${bestScore.score}) na carteira`,
+      tone: "neutral",
+      onClick: () => onOpenCompare(worstScore.ticker),
+    });
+  }
+
+  if (scoreTotal < 50) {
+    steps.push({
+      key: "alerts",
+      label: "Criar alerta de proteção",
+      sub: "carteira em zona de risco — defina disparo por preço ou margem Graham",
+      tone: "down",
+      onClick: onOpenAlerts,
+    });
+  }
+
+  if (steps.length === 0) {
+    steps.push({
+      key: "add",
+      label: "Diversificar com novo ativo",
+      sub: "carteira sólida — buscar oportunidades complementares no mercado",
+      tone: "neutral",
+      onClick: onAddStock,
+    });
+  }
+
+  const toneColor = (tone: NextStep["tone"]) => (tone === "warn" ? T.warn : tone === "down" ? T.down : accent);
+
+  return (
+    <div>
+      <SectionHeader label="Próximos passos" />
+      <PraxiaCard padding={4}>
+        {steps.map((step, i) => (
+          <button
+            key={step.key}
+            onClick={step.onClick}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "12px 12px",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              textAlign: "left",
+              borderBottom: i === steps.length - 1 ? "none" : `0.5px solid ${T.hairline}`,
+            }}
+          >
+            <span
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                background: `${toneColor(step.tone)}1f`,
+                border: `0.5px solid ${toneColor(step.tone)}55`,
+                color: toneColor(step.tone),
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon.arrowUp size={12} color={toneColor(step.tone)} style={{ transform: "rotate(90deg)" }} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: T.display, fontSize: 13.5, fontWeight: 600, color: T.ink }}>
+                {step.label}
+              </div>
+              <div
+                style={{
+                  marginTop: 2,
+                  fontFamily: T.body,
+                  fontSize: 11,
+                  color: T.ink50,
+                  lineHeight: 1.4,
+                }}
+              >
+                {step.sub}
+              </div>
+            </span>
+          </button>
+        ))}
+      </PraxiaCard>
     </div>
   );
 }

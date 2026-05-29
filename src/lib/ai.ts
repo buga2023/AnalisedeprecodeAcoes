@@ -13,6 +13,7 @@ import {
 } from "./context";
 import { PRAXIA_SYSTEM_PROMPT } from "./praxiaPrompt";
 import { buildOptionalChainsBlock } from "./transmissionChains";
+import { SCREENER_SECTORS, type ScreenerFilter, type ScreenerSortBy } from "./screener";
 import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
 
 // Re-exporta pra compatibilidade com imports antigos. Fonte unica em praxiaPrompt.ts.
@@ -758,13 +759,120 @@ Responda em portugues brasileiro, sem emojis. Toda recomendacao DEVE ter fontes.
   return result;
 }
 
+/* ─── Fase 4: Screener "Descobrir" ──────────────────────────────────────── */
+
+/** System curto pra extração pura — nao gasta a persona completa da Pra. */
+const SCREENER_SYSTEM =
+  "Voce traduz pedidos de investidores em filtros de screening de acoes da B3. " +
+  "Responda SOMENTE com JSON valido do schema pedido, sem texto, sem markdown.";
+
+const VALID_SORT: ScreenerSortBy[] = ["score", "dy", "roe", "marginOfSafety"];
+
+/** Aceita so numeros finitos e positivos; clampa ao intervalo plausivel. */
+function clampNum(v: unknown, min: number, max: number): number | undefined {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * Valida a saida do LLM contra o schema do `ScreenerFilter`. Descarta campos
+ * lixo, clampa numeros e filtra setores ao conjunto conhecido — a UI nunca
+ * recebe filtro inventado.
+ */
+function sanitizeScreenerFilter(raw: Record<string, unknown>): ScreenerFilter {
+  const f: ScreenerFilter = {};
+  const minScore = clampNum(raw.minScore, 0, 100);
+  if (minScore != null) f.minScore = minScore;
+  const minRoePct = clampNum(raw.minRoePct, 0, 100);
+  if (minRoePct != null) f.minRoePct = minRoePct;
+  const minDyPct = clampNum(raw.minDyPct, 0, 100);
+  if (minDyPct != null) f.minDyPct = minDyPct;
+  const maxPl = clampNum(raw.maxPl, 0, 1000);
+  if (maxPl != null) f.maxPl = maxPl;
+  const maxPvp = clampNum(raw.maxPvp, 0, 100);
+  if (maxPvp != null) f.maxPvp = maxPvp;
+  const maxDebtToEbitda = clampNum(raw.maxDebtToEbitda, 0, 100);
+  if (maxDebtToEbitda != null) f.maxDebtToEbitda = maxDebtToEbitda;
+  const mos = clampNum(raw.minMarginOfSafetyPct, 0, 100);
+  if (mos != null) f.minMarginOfSafetyPct = mos;
+  if (Array.isArray(raw.sectors)) {
+    const valid = raw.sectors.filter(
+      (s): s is string => typeof s === "string" && SCREENER_SECTORS.includes(s)
+    );
+    if (valid.length > 0) f.sectors = valid;
+  }
+  if (typeof raw.sortBy === "string" && VALID_SORT.includes(raw.sortBy as ScreenerSortBy)) {
+    f.sortBy = raw.sortBy as ScreenerSortBy;
+  }
+  return f;
+}
+
+/**
+ * Traduz o pedido em linguagem natural ("acoes pra dividendos com crescimento")
+ * em um `ScreenerFilter`. Extração pura: system curto, sem citacoes (nao ha
+ * recomendacao aqui — so filtros). O ranking/filtro real roda em `screener.ts`
+ * sobre dados REAIS do Yahoo.
+ */
+export async function parseScreenerQuery(
+  text: string,
+  profile: InvestorProfile | null = null
+): Promise<ScreenerFilter> {
+  const q = text.trim();
+  if (!q) return {};
+
+  const prompt = `Traduza o pedido do usuario em filtros de screening fundamentalista da B3.
+
+PEDIDO: "${q}"
+${profile ? describeProfile(profile) : ""}
+
+Setores validos (use EXATAMENTE estes rotulos no array "sectors", ou omita): ${SCREENER_SECTORS.join(", ")}
+
+Campos (todos OPCIONAIS — inclua so os que o pedido sugerir; NAO mande campo com 0):
+- minScore (0-100): qualidade fundamentalista geral
+- minRoePct (ex 15): rentabilidade minima em %
+- minDyPct (ex 6): dividend yield minimo em %
+- maxPl (ex 12): preco/lucro maximo
+- maxPvp (ex 2): preco/valor patrimonial maximo
+- maxDebtToEbitda (ex 2): alavancagem maxima
+- minMarginOfSafetyPct (ex 20): desconto minimo vs preco-justo de Graham em %
+- sectors: array de rotulos validos da lista acima
+- sortBy: "score" | "dy" | "roe" | "marginOfSafety"
+
+Pistas:
+- "dividendos"/"renda passiva" -> minDyPct ~6 + sortBy "dy".
+- "baratas"/"desconto"/"valor"/"margem de seguranca" -> minMarginOfSafetyPct ~20 + sortBy "marginOfSafety".
+- "qualidade"/"solidas"/"boas empresas" -> minScore ~60 + sortBy "score".
+- "rentaveis"/"crescimento"/"ROE alto" -> minRoePct ~15 + sortBy "roe".
+- "pouco endividadas"/"saudaveis" -> maxDebtToEbitda ~2.
+- Sem pista numerica clara: deixe vazio e sortBy "score".
+
+Retorne SOMENTE JSON, sem markdown. Exemplo de formato (omita as chaves que nao se aplicam):
+{"minDyPct":6,"sortBy":"dy"}`;
+
+  const raw = await callAIServerless<Record<string, unknown>>(
+    prompt,
+    "json_object",
+    "screener",
+    SCREENER_SYSTEM
+  );
+  return sanitizeScreenerFilter(raw && typeof raw === "object" ? raw : {});
+}
+
 // PRAXIA_SYSTEM_PROMPT mestre vive em src/lib/praxiaPrompt.ts (re-exportado no topo).
 
 async function callAIServerless<T>(
   prompt: string,
   responseFormat: string = "text",
-  capability: "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" = "insights"
+  capability: "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" | "screener" = "insights",
+  /**
+   * Substitui o PRAXIA_SYSTEM_PROMPT por um system curto. Usado em tarefas de
+   * extração pura (ex.: traduzir busca → filtros), onde a persona completa da
+   * Pra só desperdiçaria tokens.
+   */
+  systemOverride?: string
 ): Promise<T> {
+  const systemPrompt = systemOverride ?? PRAXIA_SYSTEM_PROMPT;
   // Rate-limit preventivo — barra antes de bater 429 no provider gratuito.
   const gate = checkRateLimit();
   if (!gate.allowed) {
@@ -779,7 +887,7 @@ async function callAIServerless<T>(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messages: [
-        { role: "system", content: PRAXIA_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
@@ -803,7 +911,7 @@ async function callAIServerless<T>(
   // Telemetria: estimativa de tokens in (system prompt + user) / out (resposta).
   recordCall(
     capability,
-    estimateTokens(PRAXIA_SYSTEM_PROMPT) + estimateTokens(prompt),
+    estimateTokens(systemPrompt) + estimateTokens(prompt),
     estimateTokens(String(textContent))
   );
 
