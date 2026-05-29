@@ -18,6 +18,7 @@ export default defineConfig({
       "src/**/*.{test,spec}.{ts,tsx}",
       "api/**/*.{test,spec}.ts",
       "tests/integration/**/*.{test,spec}.{ts,tsx}",
+      "tests/unit/**/*.{test,spec}.{ts,tsx}",
     ],
     coverage: {
       provider: "v8",
