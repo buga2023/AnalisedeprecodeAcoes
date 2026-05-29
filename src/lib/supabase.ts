@@ -5,8 +5,10 @@
  * `.env.local` (gitignored); em PROD vao no dashboard da Vercel. Nunca
  * commitamos chave aqui.
  *
- * Auth: magic link via email (sem senha). Persistencia: cookies + localStorage
- * (default do supabase-js, funciona offline-first).
+ * Auth: email + senha (principal) com magic link e reset de senha por email
+ * como alternativas. Persistencia: cookies + localStorage (default do
+ * supabase-js, funciona offline-first). detectSessionInUrl trata os callbacks
+ * de magic link e do link de recuperacao de senha.
  */
 
 import { createClient } from "@supabase/supabase-js";
