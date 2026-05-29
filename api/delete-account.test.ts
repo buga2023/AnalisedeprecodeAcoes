@@ -26,7 +26,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
     auth: {
-      getUser: async (_token: string) => h.state.getUser,
+      getUser: async () => h.state.getUser,
       admin: {
         deleteUser: async (uid: string) => {
           h.state.deleteUserCalledWith.push(uid);

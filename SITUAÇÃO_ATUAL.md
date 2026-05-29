@@ -1,8 +1,14 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-28 (quarta passagem, pós-commit).
-> Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`** (9 commits desta sessão, working tree limpo).
-> Pendentes: Fases 4 (Screener), 5 (Rebalanceador), 8 (FIIs), 9 (IR).
+> Documento vivo. Última atualização: 2026-05-29 (quinta passagem — integração multi-agente).
+> Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
+> Pendentes: Fases 8 (FIIs), 9 (IR).
+>
+> **Sessão 2026-05-29 (4 agentes paralelos em git worktrees, integrados via merge validado):**
+> - Fase 4 (Screener) e Fase 5 (Rebalanceador) implementadas e mergeadas (zero conflito, build/tsc/lint = baseline).
+> - Cobertura de testes ampliada: 517 → **586 testes** (sync Supabase, useAuth, hooks de estado a 97–100%; +2 e2e LGPD/add-ticker). Cobertura global 73,7% → ~77,5%.
+> - Auditoria LGPD concluída (`docs/lgpd-auditoria.md`): 0 crítico, 3 Alto (portabilidade declarada-mas-ausente, base legal não declarada, consentimento sem recusa). Implementação das correções **pendente de decisão**.
+> - Pendência de infra: e2e não rodam localmente (chromium bloqueado por proxy) — `npx playwright install chromium` para validar.
 
 ---
 
