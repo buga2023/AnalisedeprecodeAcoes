@@ -156,6 +156,34 @@ describe("api/ai handler", () => {
     expect(p1).not.toBe(p2);
   });
 
+  it("openrouter: rodízio dos 3 modelos free — o primário gira a cada chamada", async () => {
+    // Só OpenRouter com chave → pool de providers fica [openrouter], isolando o
+    // rodízio de MODELOS. models[0] (o primário enviado ao OpenRouter) deve girar.
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    const seenPrimary: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.includes("openrouter.ai")) {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { models?: string[] };
+          seenPrimary.push(body.models?.[0] ?? "");
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { content: "c" } }] }), { status: 200 });
+      })
+    );
+    const handler = await loadHandler();
+    for (const content of ["a", "b", "c"]) {
+      const req = reqWithUniqueIp({ method: "POST", body: { messages: [{ role: "user", content }] } });
+      await handler(req, makeRes());
+    }
+    expect(seenPrimary).toEqual([
+      "deepseek/deepseek-v4-flash:free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+      "openai/gpt-oss-120b:free",
+    ]);
+  });
+
   it("retorna 401 quando upstream responde com 401", async () => {
     vi.stubEnv("AI_PROVIDER", "groq");
     vi.stubEnv("GROQ_API_KEY", "k");

@@ -1,6 +1,6 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-29 (validação consolidada + push do branch `feat/billing-dormante` pro GitHub — ver seção 13).
+> Documento vivo. Última atualização: 2026-05-29 (balanceamento de IA em 2 níveis — ver seção 14).
 > Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
 > Pendentes: Fases 8 (FIIs), 9 (IR).
 >
@@ -498,3 +498,40 @@ real (clareza + risco CVM). Mudanças:
 1. **Credenciais MP de TEST** antes de `BILLING_ENABLED=true` — as atuais são de produção (cobram de verdade).
 2. Rodar migrations **002 (com fix RLS) + 003 + 004** no Supabase Dashboard.
 3. Registrar webhook `…/api/mp-webhook` no painel MP + salvar `MERCADO_PAGO_WEBHOOK_SECRET`.
+
+---
+
+## 14. Sessão 2026-05-29 — Balanceamento de IA em 2 níveis (economia de cota free)
+
+Objetivo: distribuir as chamadas LLM pra preservar a cota free (cada provedor/modelo
+tem cota separada). Implementado em dois níveis:
+
+### 14.1 Rodízio dos 3 modelos free do OpenRouter (`api/_llm.ts`)
+`resolveOpenRouterModels()` antes fixava DeepSeek V4 Flash como primário (os outros 2
+só entravam em fallback). Agora o **primário gira por requisição** (round-robin via
+`orModelCursor`): req N começa pelo modelo `N % 3` (DeepSeek → Qwen3-80B → GPT-OSS-120B),
+os outros 2 seguem como fallback automático do OpenRouter em 429/503. Não fragmenta o
+cache (chave em `ai.ts` é `provider:"balanced"` + messages, não inclui o modelo).
+
+### 14.2 Balanceamento de provedores Groq + Gemini + OpenRouter (já existia)
+`balancedChain()` (`_llm.ts:69`) já fazia round-robin entre os providers do `BALANCE_POOL`
+**que têm chave** — comportamento intacto e testado (`ai.test.ts:129`, exige início
+determinístico em `groq`, por isso o cursor NÃO foi semeado com tempo). Como só o
+OpenRouter tinha chave, não havia o que balancear. Para ativar de verdade falta só colar
+as 2 chaves free no `.env`:
+- `GROQ_API_KEY=` → console.groq.com/keys (`gsk_...`)
+- `GEMINI_API_KEY=` → aistudio.google.com/apikey (`AIza...`)
+
+Linhas deixadas **vazias** no `.env` (vazio = `getProviderApiKey` retorna null → balanceador
+ignora → nada quebra até colar). Assim que houver chave válida, o provedor entra no rodízio.
+
+### 14.3 Cuidado conhecido
+Cursores (`rrCursor`, `orModelCursor`) são por instância serverless: giram certo em
+instância quente; cold start reinicia no item 0. Irrelevante pro tráfego do Praxia e
+exigido pelo teste determinístico. Se um dia precisar de balanceamento robusto a cold
+start, seria preciso estado persistido (e ajustar o teste).
+
+### 14.4 Validação
+`npm run test:run` → **657/657** (72 files; +1 teste novo cobrindo o rodízio de modelos
+do OpenRouter em `ai.test.ts`). `npm run build` ✅ ~13,5s (warning de chunk >500KB
+pré-existente). Lint dos arquivos tocados (`_llm.ts`, `ai.test.ts`) limpo.

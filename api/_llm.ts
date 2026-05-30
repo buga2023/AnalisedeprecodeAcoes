@@ -270,21 +270,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Cursor de rodízio dos modelos free do OpenRouter (por instância). */
+let orModelCursor = 0;
+
 /**
- * Cadeia de modelos free pro OpenRouter rotear em fallback: tenta o primário e,
- * se indisponível/throttled, cai pro próximo. Primário via `OPENROUTER_MODEL`;
- * cadeia inteira customizável via `OPENROUTER_FALLBACKS` (CSV). Todos `:free`.
+ * Cadeia de até 3 modelos free pro OpenRouter. A cada request o PRIMÁRIO gira
+ * (round-robin), espalhando a cota free dos 3 em vez de drenar sempre o mesmo;
+ * os outros 2 seguem como fallback automático do OpenRouter em 429/503. Modelos
+ * via `OPENROUTER_MODEL` + `OPENROUTER_FALLBACKS` (CSV). Todos `:free`.
  */
 function resolveOpenRouterModels(): string[] {
   // Modelos free fortes p/ análise financeira PT-BR + JSON (capacidade alta,
-  // contexto grande). DeepSeek V4 Flash primário; Qwen3-80B e GPT-OSS-120B de
-  // fallback. Override por env `OPENROUTER_MODEL` / `OPENROUTER_FALLBACKS`.
+  // contexto grande). DeepSeek V4 Flash + Qwen3-80B + GPT-OSS-120B.
+  // Override por env `OPENROUTER_MODEL` / `OPENROUTER_FALLBACKS`.
   const primary = process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4-flash:free";
   const fallbacks = process.env.OPENROUTER_FALLBACKS
     ? process.env.OPENROUTER_FALLBACKS.split(",").map((s) => s.trim()).filter(Boolean)
     : ["qwen/qwen3-next-80b-a3b-instruct:free", "openai/gpt-oss-120b:free"];
   // OpenRouter limita `models` a 3 itens — dedup + corta no teto.
-  return [...new Set([primary, ...fallbacks])].slice(0, 3);
+  const all = [...new Set([primary, ...fallbacks])].slice(0, 3);
+  if (all.length <= 1) return all;
+  // Gira o início: request N começa pelo modelo N % 3; o resto vira fallback.
+  const start = orModelCursor % all.length;
+  orModelCursor = (orModelCursor + 1) % all.length;
+  return [...all.slice(start), ...all.slice(0, start)];
 }
 
 async function callOpenRouter(
