@@ -10,9 +10,12 @@ import type { Stock } from "@/types/stock";
 export function FIIDetailStats({ fii, accent }: { fii: Stock; accent: string }) {
   const T = PraxiaTokens;
   const [vacancyRate, setVacancyRate] = useState<number | undefined>(fii.vacancyRate);
-  // DY do quote (fração → %); fallbacks de histórico/scrape sobrescrevem se vierem > 0.
+  // Cascata de DY (%): (b) quote já entra como estado inicial (fii.dividendYield é fração → ×100);
+  // (a) histórico e (c) scraping sobrescrevem abaixo. História é a fonte preferida pra FII.
   const [dyPct, setDyPct] = useState<number>(fii.dividendYield > 0 ? fii.dividendYield * 100 : 0);
 
+  // Reroda só ao trocar de ticker; fii.price é lido no momento do fetch (staleness de até 60s
+  // no DY derivado é irrelevante e evita refetch a cada polling de preço).
   useEffect(() => {
     let active = true;
     // (a) histórico de dividendos — fonte preferida pra FII
@@ -31,7 +34,8 @@ export function FIIDetailStats({ fii, accent }: { fii: Stock; accent: string }) 
       }
     });
     return () => { active = false; };
-  }, [fii.ticker, fii.price]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fii.ticker]);
 
   const { total, breakdown } = calculateFIIScore({ dividendYield: dyPct, pvp: fii.pvp, vacancyRate, segment: fii.sector });
 

@@ -33,7 +33,6 @@ function htmlToText(html: string): string {
 export interface FIIFields {
   vacancyRate?: number;
   dividendYield?: number; // em %
-  segment?: string;
 }
 
 /** Extrai campos estruturados do texto da página de um FII. Puro e testável. */
@@ -49,8 +48,6 @@ export function parseFIIFields(text: string): FIIFields {
     const n = parseFloat(dy[1].replace(",", "."));
     if (!Number.isNaN(n) && n > 0 && n <= 100) out.dividendYield = n;
   }
-  const seg = text.match(/segmento[:\s]{0,5}([A-Za-zÀ-ÿ/ ]{3,30}?)(?:\s{2,}|$|\d)/i);
-  if (seg) out.segment = seg[1].trim();
   return out;
 }
 
@@ -87,7 +84,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const text = await scrape(url);
       if (text && text.length >= 200) {
         const fields = parseFIIFields(text);
-        if (fields.vacancyRate !== undefined || fields.dividendYield !== undefined || fields.segment) {
+        if (fields.vacancyRate !== undefined || fields.dividendYield !== undefined) {
           return response.status(200).json({ ticker, ...fields, fonte: url });
         }
       }

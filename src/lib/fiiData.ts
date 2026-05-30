@@ -1,12 +1,11 @@
 /**
- * Cliente do endpoint /api/fii-data — vacância, DY (%) e segmento de reforço de FIIs.
+ * Cliente do endpoint /api/fii-data — vacância e DY (%) de FIIs via scraping.
  * Cache localStorage 7d por ticker. Falha → objeto vazio (degradação graciosa).
  */
 export interface FIIData {
   vacancyRate?: number;
   /** DY em % (ex.: 9.8) extraído por scraping. */
   dividendYield?: number;
-  segment?: string;
   fonte?: string;
 }
 
@@ -45,7 +44,6 @@ export async function fetchFIIData(ticker: string): Promise<FIIData> {
     const clean: FIIData = {
       vacancyRate: typeof data.vacancyRate === "number" ? data.vacancyRate : undefined,
       dividendYield: typeof data.dividendYield === "number" ? data.dividendYield : undefined,
-      segment: data.segment,
       fonte: data.fonte,
     };
     writeCache(ticker, clean);
