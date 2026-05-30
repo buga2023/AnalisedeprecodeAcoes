@@ -158,7 +158,9 @@ describe("api/delete-account", () => {
       "portfolio_stocks",
       "preferences",
       "profiles",
+      "subscriptions",
       "transactions",
+      "usage_log",
     ]);
     expect(h.state.deleteUserCalledWith).toEqual(["user-123"]);
   });
