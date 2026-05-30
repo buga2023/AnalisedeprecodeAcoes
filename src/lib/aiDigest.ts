@@ -18,6 +18,7 @@ import type {
 } from "@/types/stock";
 import { PRAXIA_SYSTEM_PROMPT } from "./praxiaPrompt";
 import { digestContextToPromptJson } from "./digest";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
 
 const AI_API_URL = "/api/ai";
 
@@ -106,7 +107,7 @@ Responda em portugues brasileiro, sem emojis, sem markdown.`;
 async function callAIForDigest(prompt: string): Promise<unknown> {
   const response = await fetch(AI_API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
     body: JSON.stringify({
       messages: [
         { role: "system", content: PRAXIA_SYSTEM_PROMPT },
@@ -115,8 +116,11 @@ async function callAIForDigest(prompt: string): Promise<unknown> {
       temperature: 0.5,
       max_tokens: 1100,
       response_format: { type: "json_object" },
+      feature: "digest",
     }),
   });
+
+  await throwIfPaywalled(response, "digest");
 
   if (!response.ok) {
     const errorData: { error?: string } = await response.json().catch(() => ({}));

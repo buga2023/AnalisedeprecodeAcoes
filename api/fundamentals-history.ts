@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "./_cors";
 import { checkRateLimit } from "./_ratelimit";
+import { getYahooCreds, clearYahooCreds } from "./_yahooCrumb";
 
 /**
  * Historico trimestral de fundamentos via Yahoo Finance `quoteSummary` v10.
@@ -104,14 +105,25 @@ function isoDate(dt: Date): string {
   return dt.toISOString().slice(0, 10);
 }
 
-async function fetchSummary(symbol: string): Promise<YahooQuoteSummaryResult | null> {
+async function fetchSummary(symbol: string, retryAuth = true): Promise<YahooQuoteSummaryResult | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
+    // quoteSummary v10 exige crumb + cookie (senão 401); segue sem ele se falhar.
+    const creds = await getYahooCreds(YAHOO_HEADERS);
+    const crumbParam = creds ? `&crumb=${encodeURIComponent(creds.crumb)}` : "";
     const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
       symbol
-    )}?modules=${MODULES}`;
-    const res = await fetch(url, { signal: controller.signal, headers: YAHOO_HEADERS });
+    )}?modules=${MODULES}${crumbParam}`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: creds ? { ...YAHOO_HEADERS, Cookie: creds.cookie } : YAHOO_HEADERS,
+    });
+    if (res.status === 401 && retryAuth) {
+      clearTimeout(timeoutId);
+      clearYahooCreds();
+      return fetchSummary(symbol, false);
+    }
     if (!res.ok) return null;
     const data = (await res.json()) as YahooQuoteSummaryResponse;
     const result = data.quoteSummary?.result?.[0];

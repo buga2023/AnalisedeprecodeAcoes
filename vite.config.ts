@@ -20,6 +20,18 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // Separa os vendors grandes em chunks próprios: tira ~200 KB do
+          // index (que passava de 500 KB) e melhora o cache (vendor muda raro).
+          manualChunks: {
+            "react-vendor": ["react", "react-dom", "react/jsx-runtime"],
+            supabase: ["@supabase/supabase-js"],
+          },
+        },
+      },
+    },
     server: {
       watch: {
         // Ignora pastas geradas (testes, coverage, build) — sem isso o

@@ -8,6 +8,7 @@ import {
   describePortfolioLine,
 } from "./praxiaPrompt";
 import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
 
 /**
  * Análise IA POR NOTÍCIA INDIVIDUAL — cruza a manchete com a carteira do
@@ -211,7 +212,7 @@ ${JSON_ONLY_SUFFIX}`;
   try {
     response = await fetch(AI_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
       body: JSON.stringify({
         messages: [
           { role: "system", content: PRAXIA_SYSTEM_PROMPT },
@@ -220,6 +221,7 @@ ${JSON_ONLY_SUFFIX}`;
         temperature: 0.4,
         max_tokens: 900,
         response_format: { type: "json_object" },
+        feature: "classify-news",
       }),
       signal: controller.signal,
     });
@@ -231,6 +233,8 @@ ${JSON_ONLY_SUFFIX}`;
     throw e;
   }
   clearTimeout(timeoutId);
+
+  await throwIfPaywalled(response, "classify-news");
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

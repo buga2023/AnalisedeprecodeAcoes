@@ -5,39 +5,132 @@ import { PraxiaLogo } from "@/components/praxia/PraxiaLogo";
 import { Icon } from "@/components/praxia/Icon";
 import { useAuth } from "@/hooks/useAuth";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { humanizeAuthError } from "@/lib/authErrors";
 
 interface LoginScreenProps {
-  /** Notificado quando a sessao chega (via App.tsx via useAuth). Opcional — App.tsx pode escutar useAuth direto. */
-  onLogin?: () => void;
+  /** Quando true, abre direto no fluxo de definir nova senha (link de reset clicado). */
+  recoveryMode?: boolean;
 }
 
-type Step = "input" | "sent";
+type Mode = "signin" | "signup";
+type Step = "input" | "sent" | "reset-sent" | "recovery";
 
-export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
+const MIN_PASSWORD = 8;
+const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
   const T = PraxiaTokens;
   const accent = T.accent;
-  const { signInWithMagicLink } = useAuth();
+  const {
+    signInWithPassword,
+    signUpWithPassword,
+    signInWithMagicLink,
+    resetPassword,
+    updatePassword,
+  } = useAuth();
+
+  const [mode, setMode] = useState<Mode>("signin");
+  const [step, setStep] = useState<Step>(recoveryMode ? "recovery" : "input");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [step, setStep] = useState<Step>("input");
+
+  const emailValid = emailRe.test(email.trim());
+  const passwordValid = password.length >= MIN_PASSWORD;
+
+  function resetFeedback() {
+    if (error) setError("");
+    if (notice) setNotice("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (submitting || !email.trim()) return;
+    if (submitting || !emailValid || !passwordValid || !isSupabaseConfigured) return;
     setSubmitting(true);
     setError("");
+    setNotice("");
 
-    const result = await signInWithMagicLink(email);
+    const result =
+      mode === "signin"
+        ? await signInWithPassword(email, password)
+        : await signUpWithPassword(email, password);
+
     if (result.ok) {
-      setStep("sent");
+      if (result.needsConfirmation) {
+        setNotice(`Conta criada. Confirme o email enviado para ${email.trim()} para entrar.`);
+      }
+      // Sucesso com sessao → App.tsx detecta o user e troca de tela sozinho.
     } else {
-      setError(result.error);
+      setError(humanizeAuthError(result.error));
     }
     setSubmitting(false);
   }
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  async function handleMagicLink() {
+    if (submitting || !emailValid || !isSupabaseConfigured) return;
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+    const result = await signInWithMagicLink(email);
+    if (result.ok) setStep("sent");
+    else setError(humanizeAuthError(result.error));
+    setSubmitting(false);
+  }
+
+  async function handleForgot() {
+    if (submitting || !emailValid || !isSupabaseConfigured) {
+      if (!emailValid) setError("Digite seu email primeiro para recuperar a senha.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+    const result = await resetPassword(email);
+    if (result.ok) setStep("reset-sent");
+    else setError(humanizeAuthError(result.error));
+    setSubmitting(false);
+  }
+
+  async function handleRecovery(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitting) return;
+    if (password.length < MIN_PASSWORD) {
+      setError(`A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`);
+      return;
+    }
+    if (password !== password2) {
+      setError("As senhas nao conferem.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    const result = await updatePassword(password);
+    // Sucesso → passwordRecovery reseta no hook e o App.tsx cai na app.
+    if (!result.ok) setError(humanizeAuthError(result.error));
+    setSubmitting(false);
+  }
+
+  const headline = (() => {
+    if (step === "sent") return ["Link", "enviado"];
+    if (step === "reset-sent") return ["Email", "enviado"];
+    if (step === "recovery") return ["Nova", "senha"];
+    return mode === "signin" ? ["Bem-vindo", "de volta"] : ["Crie", "sua conta"];
+  })();
+
+  const subtext = (() => {
+    if (step === "sent")
+      return `Verifique ${email.trim()}. Clique no link da Praxia para entrar — ele expira em 1 hora.`;
+    if (step === "reset-sent")
+      return `Enviamos um link de recuperacao para ${email.trim()}. Abra-o no mesmo navegador para definir uma nova senha.`;
+    if (step === "recovery") return "Defina uma nova senha para sua conta. Minimo de 8 caracteres.";
+    return mode === "signin"
+      ? "Entre com seu email e senha. Esqueceu? Recupere o acesso abaixo."
+      : "Escolha um email e uma senha (minimo 8 caracteres) para comecar.";
+  })();
 
   return (
     <div
@@ -80,7 +173,7 @@ export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
         />
 
         <form
-          onSubmit={handleSubmit}
+          onSubmit={step === "recovery" ? handleRecovery : handleSubmit}
           className="pra-screen"
           style={{
             position: "relative",
@@ -119,33 +212,13 @@ export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
                 letterSpacing: -1,
               }}
             >
-              {step === "input" ? (
-                <>
-                  Bem-vindo{" "}
-                  <span style={{ fontStyle: "italic", color: T.gold }}>
-                    de volta
-                  </span>
-                  .
-                </>
-              ) : (
-                <>
-                  Link{" "}
-                  <span style={{ fontStyle: "italic", color: T.gold }}>
-                    enviado
-                  </span>
-                  .
-                </>
-              )}
+              {headline[0]}{" "}
+              <span style={{ fontStyle: "italic", color: T.gold }}>{headline[1]}</span>.
             </h1>
             <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 32, height: 1, background: T.gold }} />
               <span
-                style={{
-                  width: 4,
-                  height: 4,
-                  background: T.gold,
-                  transform: "rotate(45deg)",
-                }}
+                style={{ width: 4, height: 4, background: T.gold, transform: "rotate(45deg)" }}
               />
             </div>
             <p
@@ -158,32 +231,69 @@ export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
                 maxWidth: 320,
               }}
             >
-              {step === "input"
-                ? "Digite seu email — enviamos um link de acesso seguro. Sem senha, sem cadastro extra."
-                : `Verifique ${email}. Clique no link da Praxia para entrar — ele expira em 1 hora.`}
+              {subtext}
             </p>
           </div>
 
+          {!isSupabaseConfigured && step === "input" && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(255,200,92,0.10)",
+                border: "0.5px solid rgba(255,200,92,0.32)",
+                color: T.warn,
+                fontFamily: T.body,
+                fontSize: 11.5,
+                lineHeight: 1.4,
+              }}
+            >
+              Auth ainda nao configurado neste navegador. Defina <code>VITE_SUPABASE_URL</code> e{" "}
+              <code>VITE_SUPABASE_ANON_KEY</code> em <code>.env.local</code>.
+            </div>
+          )}
+
           {step === "input" && (
             <>
-              {!isSupabaseConfigured && (
-                <div
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    background: "rgba(255,200,92,0.10)",
-                    border: "0.5px solid rgba(255,200,92,0.32)",
-                    color: T.warn,
-                    fontFamily: T.body,
-                    fontSize: 11.5,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  Auth ainda não configurado neste navegador. Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> em <code>.env.local</code>.
-                </div>
-              )}
+              {/* Toggle Entrar / Criar conta */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  padding: 4,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.04)",
+                  border: `0.5px solid ${T.hairline}`,
+                }}
+              >
+                {(["signin", "signup"] as Mode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setMode(m);
+                      resetFeedback();
+                    }}
+                    style={{
+                      flex: 1,
+                      height: 36,
+                      borderRadius: 999,
+                      border: "none",
+                      cursor: "pointer",
+                      fontFamily: T.body,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: mode === m ? "white" : T.ink70,
+                      background: mode === m ? accent : "transparent",
+                      transition: "background 0.15s",
+                    }}
+                  >
+                    {m === "signin" ? "Entrar" : "Criar conta"}
+                  </button>
+                ))}
+              </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <Field
                   label="Email"
                   icon={<Icon.profile size={16} color={T.ink50} />}
@@ -199,101 +309,158 @@ export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
                       inputMode="email"
                       onChange={(e) => {
                         setEmail(e.target.value);
-                        if (error) setError("");
+                        resetFeedback();
                       }}
                       style={inputStyle()}
                     />
                   }
                 />
 
-                {error && (
-                  <div
-                    style={{
-                      marginTop: 2,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      background: "rgba(255,107,129,0.10)",
-                      border: "0.5px solid rgba(255,107,129,0.32)",
-                      color: T.down,
-                      fontFamily: T.body,
-                      fontSize: 12.5,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
+                <Field
+                  label="Senha"
+                  icon={<Icon.shield size={16} color={T.ink50} />}
+                  input={
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      placeholder="minimo 8 caracteres"
+                      autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        resetFeedback();
+                      }}
+                      style={inputStyle()}
+                    />
+                  }
+                  trailing={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      style={trailingBtnStyle()}
+                    >
+                      {showPassword ? "ocultar" : "ver"}
+                    </button>
+                  }
+                />
+
+                {notice && <NoticeBox text={notice} accent={accent} />}
+                {error && <ErrorBox text={error} />}
+
+                {mode === "signin" && (
+                  <button
+                    type="button"
+                    onClick={handleForgot}
+                    disabled={submitting}
+                    style={linkBtnStyle(T.ink50)}
                   >
-                    <Icon.shield size={14} color={T.down} />
-                    {error}
-                  </div>
+                    Esqueci minha senha
+                  </button>
                 )}
               </div>
 
               <button
                 type="submit"
-                disabled={submitting || !emailValid || !isSupabaseConfigured}
+                disabled={submitting || !emailValid || !passwordValid || !isSupabaseConfigured}
+                style={primaryBtnStyle(
+                  accent,
+                  submitting || !emailValid || !passwordValid || !isSupabaseConfigured
+                )}
+              >
+                {submitting
+                  ? "Aguarde…"
+                  : mode === "signin"
+                    ? "Entrar"
+                    : "Criar conta"}
+                {!submitting && emailValid && passwordValid && isSupabaseConfigured && <ArrowDot />}
+              </button>
+
+              <div
                 style={{
-                  marginTop: 10,
-                  height: 54,
-                  borderRadius: 999,
-                  background:
-                    submitting || !emailValid || !isSupabaseConfigured
-                      ? "rgba(255,255,255,0.08)"
-                      : accent,
-                  color:
-                    submitting || !emailValid || !isSupabaseConfigured
-                      ? "rgba(255,255,255,0.4)"
-                      : "white",
-                  border: "none",
-                  fontFamily: T.display,
-                  fontWeight: 600,
-                  fontSize: 15,
-                  cursor:
-                    submitting || !emailValid || !isSupabaseConfigured
-                      ? "not-allowed"
-                      : "pointer",
-                  boxShadow:
-                    submitting || !emailValid || !isSupabaseConfigured
-                      ? "none"
-                      : `0 16px 36px ${accent}55`,
-                  letterSpacing: -0.1,
-                  display: "inline-flex",
+                  display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
+                  gap: 12,
+                  marginTop: 2,
                 }}
               >
-                {submitting ? "Enviando…" : "Enviar link de acesso"}
-                {!submitting && emailValid && isSupabaseConfigured && (
-                  <span
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      background: "rgba(255,255,255,0.18)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M5 12h14M13 5l7 7-7 7" />
-                    </svg>
-                  </span>
-                )}
+                <span style={{ flex: 1, height: 1, background: T.hairline }} />
+                <span style={{ fontFamily: T.body, fontSize: 11, color: T.ink30 }}>ou</span>
+                <span style={{ flex: 1, height: 1, background: T.hairline }} />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleMagicLink}
+                disabled={submitting || !emailValid || !isSupabaseConfigured}
+                style={secondaryBtnStyle(T)}
+              >
+                Entrar com link magico
               </button>
             </>
           )}
 
-          {step === "sent" && (
+          {step === "recovery" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
+              <Field
+                label="Nova senha"
+                icon={<Icon.shield size={16} color={T.ink50} />}
+                input={
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    placeholder="minimo 8 caracteres"
+                    autoFocus
+                    autoComplete="new-password"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      resetFeedback();
+                    }}
+                    style={inputStyle()}
+                  />
+                }
+                trailing={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    style={trailingBtnStyle()}
+                  >
+                    {showPassword ? "ocultar" : "ver"}
+                  </button>
+                }
+              />
+              <Field
+                label="Confirmar senha"
+                icon={<Icon.shield size={16} color={T.ink50} />}
+                input={
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password2}
+                    placeholder="repita a senha"
+                    autoComplete="new-password"
+                    onChange={(e) => {
+                      setPassword2(e.target.value);
+                      resetFeedback();
+                    }}
+                    style={inputStyle()}
+                  />
+                }
+              />
+              {error && <ErrorBox text={error} />}
+              <button
+                type="submit"
+                disabled={submitting || password.length < MIN_PASSWORD || password !== password2}
+                style={primaryBtnStyle(
+                  accent,
+                  submitting || password.length < MIN_PASSWORD || password !== password2
+                )}
+              >
+                {submitting ? "Salvando…" : "Salvar nova senha"}
+              </button>
+            </div>
+          )}
+
+          {(step === "sent" || step === "reset-sent") && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
               <div
                 style={{
@@ -307,27 +474,19 @@ export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
                   lineHeight: 1.5,
                 }}
               >
-                Link de acesso enviado para <b>{email}</b>. Abra do mesmo navegador pra voltar aqui automaticamente.
+                {step === "sent" ? "Link de acesso enviado" : "Link de recuperacao enviado"} para{" "}
+                <b>{email.trim()}</b>. Abra do mesmo navegador para continuar aqui.
               </div>
               <button
                 type="button"
                 onClick={() => {
                   setStep("input");
-                  setEmail("");
+                  setError("");
+                  setNotice("");
                 }}
-                style={{
-                  height: 44,
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.05)",
-                  color: T.ink70,
-                  border: `0.5px solid ${T.hairline}`,
-                  fontFamily: T.body,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                style={secondaryBtnStyle(T)}
               >
-                Usar outro email
+                Voltar
               </button>
             </div>
           )}
@@ -343,11 +502,85 @@ export function LoginScreen({ onLogin: _onLogin }: LoginScreenProps) {
               textAlign: "center",
             }}
           >
-            paper trading · sem recomendação personalizada
+            paper trading · sem recomendacao personalizada
           </div>
         </form>
       </div>
     </div>
+  );
+}
+
+function NoticeBox({ text, accent }: { text: string; accent: string }) {
+  const T = PraxiaTokens;
+  return (
+    <div
+      style={{
+        marginTop: 2,
+        padding: "10px 12px",
+        borderRadius: 12,
+        background: `${accent}14`,
+        border: `0.5px solid ${accent}44`,
+        color: T.ink,
+        fontFamily: T.body,
+        fontSize: 12.5,
+        lineHeight: 1.4,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function ErrorBox({ text }: { text: string }) {
+  const T = PraxiaTokens;
+  return (
+    <div
+      style={{
+        marginTop: 2,
+        padding: "10px 12px",
+        borderRadius: 12,
+        background: "rgba(255,107,129,0.10)",
+        border: "0.5px solid rgba(255,107,129,0.32)",
+        color: T.down,
+        fontFamily: T.body,
+        fontSize: 12.5,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <Icon.shield size={14} color={T.down} />
+      {text}
+    </div>
+  );
+}
+
+function ArrowDot() {
+  return (
+    <span
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        background: "rgba(255,255,255,0.18)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="white"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5 12h14M13 5l7 7-7 7" />
+      </svg>
+    </span>
   );
 }
 
@@ -407,5 +640,71 @@ function inputStyle(): React.CSSProperties {
     color: PraxiaTokens.ink,
     fontFamily: PraxiaTokens.body,
     fontSize: 14,
+  };
+}
+
+function trailingBtnStyle(): React.CSSProperties {
+  return {
+    background: "transparent",
+    border: "none",
+    color: PraxiaTokens.ink50,
+    fontFamily: PraxiaTokens.body,
+    fontSize: 11.5,
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: 0,
+    letterSpacing: 0.2,
+  };
+}
+
+function linkBtnStyle(color: string): React.CSSProperties {
+  return {
+    alignSelf: "flex-start",
+    background: "transparent",
+    border: "none",
+    color,
+    fontFamily: PraxiaTokens.body,
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: "pointer",
+    padding: "2px 0",
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+  };
+}
+
+function primaryBtnStyle(accent: string, disabled: boolean): React.CSSProperties {
+  const T = PraxiaTokens;
+  return {
+    marginTop: 6,
+    height: 54,
+    borderRadius: 999,
+    background: disabled ? "rgba(255,255,255,0.08)" : accent,
+    color: disabled ? "rgba(255,255,255,0.4)" : "white",
+    border: "none",
+    fontFamily: T.display,
+    fontWeight: 600,
+    fontSize: 15,
+    cursor: disabled ? "not-allowed" : "pointer",
+    boxShadow: disabled ? "none" : `0 16px 36px ${accent}55`,
+    letterSpacing: -0.1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  };
+}
+
+function secondaryBtnStyle(T: typeof PraxiaTokens): React.CSSProperties {
+  return {
+    height: 48,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.05)",
+    color: T.ink70,
+    border: `0.5px solid ${T.hairline}`,
+    fontFamily: T.body,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
   };
 }

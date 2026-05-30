@@ -1,12 +1,11 @@
 /**
  * Hook de autenticacao do Praxia — wrap leve do supabase.auth.
  *
- * Expoe estado (user, session, loading) + acoes (signInWithMagicLink, signOut).
- * Escuta onAuthStateChange pra refletir login/logout em tempo real (multi-tab).
- *
- * Estrategia: magic link sem senha. O usuario digita email, recebe link,
- * clica e cai de volta no app ja autenticado (supabase trata o callback via
- * detectSessionInUrl=true em supabase.ts).
+ * Expoe estado (user, session, loading, passwordRecovery) + acoes:
+ * email+senha (signInWithPassword, signUpWithPassword), recuperacao
+ * (resetPassword, updatePassword), magic link (signInWithMagicLink) e signOut.
+ * Escuta onAuthStateChange pra refletir login/logout em tempo real (multi-tab)
+ * e detectar o evento PASSWORD_RECOVERY (link de reset clicado).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,12 +18,25 @@ interface AuthState {
   loading: boolean;
 }
 
+/** Resultado padrao das acoes de auth. */
+type AuthResult = { ok: true; needsConfirmation?: boolean } | { ok: false; error: string };
+
+const NOT_CONFIGURED: AuthResult = {
+  ok: false,
+  error: "Auth nao configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.",
+};
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>({
     user: null,
     session: null,
     loading: true,
   });
+  // True entre o clique no link de reset (evento PASSWORD_RECOVERY) e a troca
+  // de senha bem-sucedida. O App.tsx usa pra forcar a tela de nova senha.
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     // Quando as envs faltam, nao tenta nada — fica em estado nao-autenticado
@@ -46,9 +58,10 @@ export function useAuth() {
       });
     });
 
-    // 2) Escuta mudancas (login, logout, refresh, signed_in via magic link).
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    // 2) Escuta mudancas (login, logout, refresh, signed_in, recovery).
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
       setState({
         user: session?.user ?? null,
         session,
@@ -83,6 +96,52 @@ export function useAuth() {
     []
   );
 
+  const signInWithPassword = useCallback(
+    async (email: string, password: string): Promise<AuthResult> => {
+      if (!isSupabaseConfigured) return NOT_CONFIGURED;
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizeEmail(email),
+        password,
+      });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
+    },
+    []
+  );
+
+  const signUpWithPassword = useCallback(
+    async (email: string, password: string): Promise<AuthResult> => {
+      if (!isSupabaseConfigured) return NOT_CONFIGURED;
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizeEmail(email),
+        password,
+      });
+      if (error) return { ok: false, error: error.message };
+      // "Confirm email" OFF → vem sessao e o onAuthStateChange loga sozinho.
+      // Se vier null, a confirmacao ainda esta ligada no painel: avisa a UI.
+      if (!data.session) return { ok: true, needsConfirmation: true };
+      return { ok: true };
+    },
+    []
+  );
+
+  const resetPassword = useCallback(async (email: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return NOT_CONFIGURED;
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
+      redirectTo: window.location.origin,
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return NOT_CONFIGURED;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, error: error.message };
+    setPasswordRecovery(false);
+    return { ok: true };
+  }, []);
+
   const signOut = useCallback(async (): Promise<void> => {
     if (!isSupabaseConfigured) return;
     await supabase.auth.signOut();
@@ -93,7 +152,12 @@ export function useAuth() {
     session: state.session,
     loading: state.loading,
     isAuthenticated: !!state.user,
+    passwordRecovery,
     signInWithMagicLink,
+    signInWithPassword,
+    signUpWithPassword,
+    resetPassword,
+    updatePassword,
     signOut,
   };
 }

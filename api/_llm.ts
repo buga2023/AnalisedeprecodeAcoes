@@ -9,8 +9,8 @@
  * Arquivos `_*.ts` em `api/` são utilitários — não viram rota Vercel.
  */
 
-export type Provider = "groq" | "openai" | "anthropic" | "gemini";
-export const PROVIDERS: Provider[] = ["groq", "openai", "anthropic", "gemini"];
+export type Provider = "groq" | "openai" | "anthropic" | "gemini" | "openrouter";
+export const PROVIDERS: Provider[] = ["groq", "openai", "anthropic", "gemini", "openrouter"];
 
 export interface Message {
   role: "system" | "user" | "assistant";
@@ -46,39 +46,100 @@ export function getProviderApiKey(provider: Provider): string | null {
     anthropic: process.env.ANTHROPIC_API_KEY,
     gemini: process.env.GEMINI_API_KEY,
     groq: process.env.GROQ_API_KEY,
+    openrouter: process.env.OPENROUTER_API_KEY,
   };
   return map[provider] || null;
 }
 
-/** Resolve o provedor padrão: env `AI_PROVIDER` ou `groq`. */
+/** Resolve o provedor padrão: env `AI_PROVIDER` ou `openrouter`. */
 export function defaultProvider(): Provider {
-  const fromEnv = (process.env.AI_PROVIDER as Provider) || "groq";
-  return PROVIDERS.includes(fromEnv) ? fromEnv : "groq";
+  const fromEnv = (process.env.AI_PROVIDER as Provider) || "openrouter";
+  return PROVIDERS.includes(fromEnv) ? fromEnv : "openrouter";
 }
 
-/**
- * Chama o provedor LLM e devolve `{ content, provider }`. Lança `LLMError`
- * (com `status` HTTP) em falha — handler decide como traduzir pro cliente.
- */
-export async function callLLM(opts: CallLLMOptions): Promise<CallLLMResult> {
-  const { provider, messages, temperature = 0.7, max_tokens = 2048, response_format } = opts;
-  const apiKey = getProviderApiKey(provider);
-  if (!apiKey) {
-    throw new LLMError(503, `IA nao configurada: defina ${provider.toUpperCase()}_API_KEY.`);
-  }
+/** True se ALGUM provider tem chave configurada (qualquer um serve via fallback). */
+export function hasAnyProviderKey(): boolean {
+  return PROVIDERS.some((p) => getProviderApiKey(p));
+}
 
+/** Status HTTP que valem trocar de provider (capacidade/quota/transitório). */
+const PROVIDER_FALLBACK_STATUSES = new Set([429, 502, 503, 504]);
+
+/** Pool free balanceado (round-robin). Cada um tem quota free SEPARADA. */
+const BALANCE_POOL: Provider[] = ["groq", "gemini", "openrouter"];
+/** Cursor de rodízio (por instância). Espalha a carga ~igualmente pelos 3. */
+let rrCursor = 0;
+
+/**
+ * Ordem de tentativa por requisição: round-robin entre os providers free com
+ * chave (Groq/Gemini/OpenRouter) — cada chamada COMEÇA por um provider
+ * diferente, distribuindo o uso e economizando a quota free de cada um. Os
+ * demais ficam como fallback (em 429/503 cai pro próximo). Se nenhum do pool
+ * free tiver chave, usa qualquer provider configurado (ex.: OpenAI/Anthropic).
+ */
+function balancedChain(): Provider[] {
+  const pool = BALANCE_POOL.filter((p) => getProviderApiKey(p));
+  if (pool.length === 0) {
+    return PROVIDERS.filter((p) => getProviderApiKey(p));
+  }
+  const start = rrCursor % pool.length;
+  rrCursor = (rrCursor + 1) % pool.length;
+  // Começa no provider da vez; o resto vira fallback na ordem do pool.
+  return [...pool.slice(start), ...pool.slice(0, start)];
+}
+
+function callSingleProvider(
+  provider: Provider,
+  apiKey: string,
+  messages: Message[],
+  temperature: number,
+  max_tokens: number,
+  response_format: unknown
+): Promise<CallLLMResult> {
   switch (provider) {
     case "openai":
       return callOpenAI(apiKey, messages, temperature, max_tokens, response_format);
     case "anthropic":
       return callAnthropic(apiKey, messages, temperature, max_tokens);
     case "gemini":
-      return callGemini(apiKey, messages, temperature, max_tokens);
+      return callGemini(apiKey, messages, temperature, max_tokens, response_format);
     case "groq":
       return callGroq(apiKey, messages, temperature, max_tokens, response_format);
+    case "openrouter":
+      return callOpenRouter(apiKey, messages, temperature, max_tokens, response_format);
     default:
       throw new LLMError(400, `Provider ${provider} nao suportado.`);
   }
+}
+
+/**
+ * Chama o LLM e devolve `{ content, provider }`. Tenta o provider preferido e,
+ * em 429/502/503/504 (capacidade/quota), cai para o próximo provider com chave.
+ * Erros não-transitórios (401/400) sobem na hora. Lança `LLMError` se todos
+ * falharem ou nenhum estiver configurado.
+ */
+export async function callLLM(opts: CallLLMOptions): Promise<CallLLMResult> {
+  const { messages, temperature = 0.7, max_tokens = 2048, response_format } = opts;
+  // Roteamento balanceado (round-robin entre Groq/Gemini/OpenRouter). O provider
+  // resolvido server-side (`AI_PROVIDER`/`opts.provider`) não fixa mais a rota —
+  // o balancer distribui pra economizar a quota free de cada um.
+  const chain = balancedChain();
+
+  let lastErr: LLMError = new LLMError(503, "IA nao configurada: defina a chave de algum provider.");
+  for (const p of chain) {
+    const apiKey = getProviderApiKey(p);
+    if (!apiKey) continue;
+    try {
+      return await callSingleProvider(p, apiKey, messages, temperature, max_tokens, response_format);
+    } catch (error) {
+      if (error instanceof LLMError && PROVIDER_FALLBACK_STATUSES.has(error.status)) {
+        lastErr = error; // tenta o próximo provider
+        continue;
+      }
+      throw error; // 401/400/etc — problema real, surface imediatamente
+    }
+  }
+  throw lastErr;
 }
 
 async function callOpenAI(
@@ -142,21 +203,32 @@ async function callGemini(
   apiKey: string,
   messages: Message[],
   temperature: number,
-  max_tokens: number
+  max_tokens: number,
+  response_format: unknown
 ): Promise<CallLLMResult> {
-  const model = "gemini-1.5-flash";
+  // Modelo via env `GEMINI_MODEL` (default 2.0-flash: free, rápido, JSON nativo;
+  // suba para gemini-2.5-flash p/ mais qualidade). Tier free do AI Studio é bem
+  // mais generoso que o free do OpenRouter (~1500 req/dia vs ~50).
+  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const contents = messages
     .filter((m) => m.role !== "system")
     .map((m) => ({ role: m.role === "user" ? "user" : "model", parts: [{ text: m.content }] }));
   const systemInstruction = messages.find((m) => m.role === "system")?.content;
+  // JSON mode nativo quando o app pede json_object → resposta sempre parseável,
+  // sem gastar tokens/retry com markdown ou texto solto.
+  const wantsJson = (response_format as { type?: string } | undefined)?.type === "json_object";
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents,
       ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
-      generationConfig: { temperature, maxOutputTokens: max_tokens },
+      generationConfig: {
+        temperature,
+        maxOutputTokens: max_tokens,
+        ...(wantsJson ? { responseMimeType: "application/json" } : {}),
+      },
     }),
   });
   if (!res.ok) {
@@ -191,6 +263,87 @@ async function callGroq(
   }
   const data = await res.json();
   return { content: data.choices?.[0]?.message?.content ?? "", provider: "groq" };
+}
+
+/** `await sleep(ms)` — backoff entre retries. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Cursor de rodízio dos modelos free do OpenRouter (por instância). */
+let orModelCursor = 0;
+
+/**
+ * Cadeia de até 3 modelos free pro OpenRouter. A cada request o PRIMÁRIO gira
+ * (round-robin), espalhando a cota free dos 3 em vez de drenar sempre o mesmo;
+ * os outros 2 seguem como fallback automático do OpenRouter em 429/503. Modelos
+ * via `OPENROUTER_MODEL` + `OPENROUTER_FALLBACKS` (CSV). Todos `:free`.
+ */
+function resolveOpenRouterModels(): string[] {
+  // Modelos free fortes p/ análise financeira PT-BR + JSON (capacidade alta,
+  // contexto grande). DeepSeek V4 Flash + Qwen3-80B + GPT-OSS-120B.
+  // Override por env `OPENROUTER_MODEL` / `OPENROUTER_FALLBACKS`.
+  const primary = process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4-flash:free";
+  const fallbacks = process.env.OPENROUTER_FALLBACKS
+    ? process.env.OPENROUTER_FALLBACKS.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["qwen/qwen3-next-80b-a3b-instruct:free", "openai/gpt-oss-120b:free"];
+  // OpenRouter limita `models` a 3 itens — dedup + corta no teto.
+  const all = [...new Set([primary, ...fallbacks])].slice(0, 3);
+  if (all.length <= 1) return all;
+  // Gira o início: request N começa pelo modelo N % 3; o resto vira fallback.
+  const start = orModelCursor % all.length;
+  orModelCursor = (orModelCursor + 1) % all.length;
+  return [...all.slice(start), ...all.slice(0, start)];
+}
+
+async function callOpenRouter(
+  apiKey: string,
+  messages: Message[],
+  temperature: number,
+  max_tokens: number,
+  response_format: unknown
+): Promise<CallLLMResult> {
+  // OpenRouter é OpenAI-compatible. `models[]` faz fallback automático entre
+  // modelos free; status 429/503 (capacidade/throttle do free) ganham retry com
+  // backoff curto. Outros erros falham na hora.
+  const models = resolveOpenRouterModels();
+  const body = JSON.stringify({
+    models,
+    messages,
+    temperature,
+    max_tokens,
+    ...(response_format ? { response_format } : {}),
+  });
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    // Headers opcionais de ranking do OpenRouter (identificam o app).
+    "X-Title": "Praxia",
+    ...(process.env.OPENROUTER_REFERER ? { "HTTP-Referer": process.env.OPENROUTER_REFERER } : {}),
+  };
+
+  const MAX_ATTEMPTS = 3;
+  let lastErr: LLMError = new LLMError(500, "Erro no OpenRouter");
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { content: data.choices?.[0]?.message?.content ?? "", provider: "openrouter" };
+    }
+    const err = await safeJson(res);
+    lastErr = new LLMError(res.status, err?.error?.message || "Erro no OpenRouter");
+    // Só re-tenta throttle/capacidade transitória; backoff 400ms, 800ms.
+    if ((res.status === 429 || res.status === 503) && attempt < MAX_ATTEMPTS) {
+      await sleep(attempt * 400);
+      continue;
+    }
+    throw lastErr;
+  }
+  throw lastErr;
 }
 
 async function safeJson(res: Response): Promise<{ error?: { message?: string } } | null> {

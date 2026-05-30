@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { detectCadence, fetchDividendHistory, projectDividends } from "./dividends";
+import { detectCadence, fetchDividendHistory, projectDividends, dividendYieldFromHistory } from "./dividends";
 import type { DividendEvent } from "./dividends";
 
 beforeEach(() => {
@@ -226,5 +226,22 @@ describe("fetchDividendHistory", () => {
     const out = await fetchDividendHistory("X");
     expect(out).toHaveLength(2);
     expect(out.map((e) => e.amount)).toEqual([1, 0.5]);
+  });
+});
+
+describe("dividendYieldFromHistory", () => {
+  it("soma últimos 12 meses ÷ preço × 100", () => {
+    const hist = [
+      { date: "2025-09-10", amount: 1 },
+      { date: "2025-12-10", amount: 1 },
+      { date: "2026-03-10", amount: 1 },
+      { date: "2026-05-10", amount: 1 },
+    ];
+    // último = 2026-05-10; janela 12m pega os 4 → soma 4; preço 100 → 4%
+    expect(dividendYieldFromHistory(hist, 100)).toBeCloseTo(4);
+  });
+  it("retorna 0 sem histórico ou preço inválido", () => {
+    expect(dividendYieldFromHistory([], 100)).toBe(0);
+    expect(dividendYieldFromHistory([{ date: "2026-05-10", amount: 1 }], 0)).toBe(0);
   });
 });

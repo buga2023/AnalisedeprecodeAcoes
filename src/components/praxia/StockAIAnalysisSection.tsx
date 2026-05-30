@@ -63,7 +63,9 @@ function writeCache(stock: Stock, analise: AnaliseIA) {
 }
 
 function buildDados(stock: Stock): DadosQuantitativos {
-  const grahamValue = calculateGrahamValue(stock.lpa, stock.vpa);
+  const isFII = stock.assetType === "fii";
+  // FII não usa Graham — precoTeto/margem ficam zerados; a moldura é DY/P-VP.
+  const grahamValue = isFII ? 0 : calculateGrahamValue(stock.lpa, stock.vpa);
   const margem = grahamValue > 0 ? calculateMarginOfSafety(stock.price, grahamValue) / 100 : 0;
   // ROI da posição = preço atual / custo médio − 1. Só faz sentido se houver custo.
   const roiPosicao =
@@ -81,6 +83,9 @@ function buildDados(stock: Stock): DadosQuantitativos {
     dividendYield: stock.dividendYield,
     debtToEbitda: stock.debtToEbitda,
     netMargin: stock.netMargin,
+    assetType: stock.assetType,
+    segment: isFII ? stock.sector : undefined,
+    vacancyRate: stock.vacancyRate,
   };
 }
 
@@ -258,6 +263,20 @@ export function StockAIAnalysisSection({ stock, profile, accent = PraxiaTokens.a
 
       {analise && !loading && (
         <>
+          {/* Deixa explícito: é um sinal de valuation/fundamentos, NÃO uma ordem
+              de compra nem recomendação personalizada (sensibilidade CVM 14). */}
+          <div
+            style={{
+              fontFamily: T.mono,
+              fontSize: 9,
+              color: T.ink50,
+              letterSpacing: 0.7,
+              textTransform: "uppercase",
+              marginBottom: 5,
+            }}
+          >
+            Sinal fundamentalista · não é ordem de compra
+          </div>
           <div
             style={{
               display: "flex",

@@ -13,7 +13,11 @@ import {
 } from "./context";
 import { PRAXIA_SYSTEM_PROMPT } from "./praxiaPrompt";
 import { buildOptionalChainsBlock } from "./transmissionChains";
+import { SCREENER_SECTORS, type ScreenerFilter, type ScreenerSortBy } from "./screener";
 import { checkRateLimit, estimateTokens, recordCall, recordHit } from "./aiTelemetry";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
+import { derivarRecomendacao } from "./calculators";
+import type { PaywalledFeature } from "@/types/stock";
 
 // Re-exporta pra compatibilidade com imports antigos. Fonte unica em praxiaPrompt.ts.
 export { PRAXIA_SYSTEM_PROMPT };
@@ -86,6 +90,12 @@ function describeProfile(profile: InvestorProfile | null | undefined): string {
  */
 const RULES_REMINDER = `Siga as <rules> e o <output_format> do system: comece com perfil, cite [n] com fonte verificavel em "fontes", nunca invente. Decisao final e do usuario.`;
 
+// Variante SEM "comece com perfil" — para a análise per-stock, cujo núcleo é
+// profile-agnostic (cacheável/compartilhado). A moldura de perfil e a
+// recomendação vêm depois, deterministicamente (buildJustificativaTemplate +
+// derivarRecomendacao), preservando a personalização sem acoplar o prompt.
+const RULES_REMINDER_NEUTRAL = `Siga as <rules> e o <output_format> do system: cite [n] com fonte verificavel em "fontes", nunca invente. Foque em fatos da empresa e contexto macro/setorial — NAO faca recomendacao de compra/venda nem mencione perfil de investidor.`;
+
 /** Dados quantitativos da acao usados como insumo para a analise. */
 export interface DadosQuantitativos {
   cotacao: number;
@@ -102,6 +112,12 @@ export interface DadosQuantitativos {
   dividendYield: number;
   debtToEbitda: number;
   netMargin: number;
+  /** "fii" troca a moldura de análise (DY/P-VP/vacância/segmento) em vez de Graham/ROE. */
+  assetType?: "stock" | "fii";
+  /** Segmento do FII (logística, shopping, papel…). Só relevante quando assetType==="fii". */
+  segment?: string;
+  /** Vacância do FII em %. undefined = sem dado. */
+  vacancyRate?: number;
 }
 
 interface PortfolioData {
@@ -315,12 +331,63 @@ export async function analisarAcaoComIA(
   // Cadeias setoriais opcionais sob demanda (mesma logica de fetchAIInsights).
   const contextBlock = baseContextBlock + buildOptionalChainsBlock(baseContextBlock + " " + ticker);
 
+  const isFII = dados.assetType === "fii";
+
+  const roiPosicaoLinha =
+    dados.roiPosicao !== undefined
+      ? (dados.roiPosicao * 100).toFixed(1) + "% (preco atual vs preco medio de compra)"
+      : "N/D (usuario nao tem posicao ou nao informou custo medio)";
+
+  // Bloco de métricas: FIIs não usam Graham/LPA/ROE — a moldura é renda (DY),
+  // desconto/ágio ao patrimônio (P/VP), vacância e resiliência do segmento.
+  const metricasBlock = isFII
+    ? `=== METRICAS CALCULADAS PELO APP (fonte: "calculo do app") — FUNDO IMOBILIARIO ===
+Cotacao atual: R$ ${dados.cotacao.toFixed(2)} (Yahoo Finance)
+Dividend Yield (12m): ${(dados.dividendYield * 100).toFixed(1)}% — principal driver de um FII
+P/VP: ${dados.pvp > 0 ? dados.pvp.toFixed(2) : "N/D"} (preco vs valor patrimonial por cota; <1 = desconto, >1 = agio)
+Segmento: ${dados.segment && dados.segment !== "—" ? dados.segment : "N/D"}
+Vacancia: ${typeof dados.vacancyRate === "number" ? dados.vacancyRate.toFixed(1) + "%" : "N/D"}
+Score do FII (app): ${dados.score}/100 (pondera DY, P/VP, vacancia e segmento)
+ROI da posicao do usuario: ${roiPosicaoLinha}
+=== FIM ===`
+    : `=== METRICAS CALCULADAS PELO APP (fonte: "calculo do app") ===
+Cotacao atual: R$ ${dados.cotacao.toFixed(2)} (Yahoo Finance)
+Preco Teto (Graham): R$ ${dados.precoTeto.toFixed(2)}
+Margem de Seguranca: ${(dados.margemSeguranca * 100).toFixed(1)}%
+Score fundamentalista: ${dados.score}/100
+P/L: ${dados.pl > 0 ? dados.pl.toFixed(1) : "N/D"}
+P/VP: ${dados.pvp > 0 ? dados.pvp.toFixed(2) : "N/D"}
+ROE: ${(dados.roe * 100).toFixed(1)}% (retorno sobre patrimonio liquido)
+ROIC: ${dados.roic && dados.roic !== 0 ? (dados.roic * 100).toFixed(1) + "% (retorno sobre capital total investido — proxy: EBIT*(1-34%)/(divida+PL))" : "N/D"}
+ROI da posicao do usuario: ${roiPosicaoLinha}
+Dividend Yield: ${(dados.dividendYield * 100).toFixed(1)}%
+Divida/EBITDA: ${dados.debtToEbitda.toFixed(1)}x
+Margem Liquida: ${(dados.netMargin * 100).toFixed(1)}%
+=== FIM ===`;
+
+  const instrucoesTipo = isFII
+    ? `INSTRUCOES (FUNDO IMOBILIARIO):
+- Graham, LPA, ROE e Margem de Seguranca NAO se aplicam a FIIs (sao cotas, nao acoes) — NAO os utilize nem os mencione.
+- Avalie pela otica de RENDA: sustentabilidade do Dividend Yield, desconto/agio ao patrimonio (P/VP),
+  vacancia e resiliencia do segmento (logistica/papel/recebiveis = mais defensivos; shopping/lajes = mais ciclicos).
+- Sinalize riscos tipicos de FII quando houver dado/noticia: vacancia alta, inadimplencia de inquilinos,
+  concentracao em poucos imoveis/inquilinos, vencimento de contratos, alavancagem do fundo, queda de juros vs DY.`
+    : `INSTRUCOES DE RENTABILIDADE:
+- Comente explicitamente ROE vs ROIC. Se ROIC < ROE de forma relevante, a empresa
+  esta gerando retorno alto sobre o PL graças à alavancagem; sinalize o risco.
+- Se ROIC > custo de capital implicito (>= SELIC + premio de risco ~5pp), e um
+  bom alocador de capital — vale como "PRO" na tese.
+- Se ROI da posicao do usuario estiver muito acima/abaixo da media historica do
+  papel, comente o que isso sinaliza sobre o momento do papel.`;
+
+  const justificativaHint = isFII
+    ? "1-2 frases CURTAS sobre o angulo qualitativo do FII (qualidade dos imoveis/inquilinos, segmento, regulacao, juros). NAO repita Score/DY/P-VP — o app ja exibe esses numeros. NAO use Graham/LPA/ROE."
+    : "1-2 frases CURTAS sobre o angulo qualitativo (macro, noticia, setor, regulacao) que reforcam ou contradizem a tese. NAO repita Graham/Score/MoS — o app ja exibe esses numeros deterministicamente acima. Foque no que SO o LLM consegue dizer.";
+
   const prompt = `Voce e Pra, analista fundamentalista da Praxia especializada em B3.
 Analise a acao ${ticker} (${nomeEmpresa}) levando em conta fundamentos, contexto
 macroeconomico (SELIC, IPCA, atividade), eventos politicos recentes e o
 ambiente social/setorial relevante.
-
-${describeProfile(profile)}
 
 ${
   dadosRI.conteudo
@@ -332,36 +399,13 @@ Sem dados de RI no momento. Use os fundamentos abaixo + macro + noticias.
 === FIM ===`
 }
 
-=== METRICAS CALCULADAS PELO APP (fonte: "calculo do app") ===
-Cotacao atual: R$ ${dados.cotacao.toFixed(2)} (Yahoo Finance)
-Preco Teto (Graham): R$ ${dados.precoTeto.toFixed(2)}
-Margem de Seguranca: ${(dados.margemSeguranca * 100).toFixed(1)}%
-Score fundamentalista: ${dados.score}/100
-P/L: ${dados.pl > 0 ? dados.pl.toFixed(1) : "N/D"}
-P/VP: ${dados.pvp > 0 ? dados.pvp.toFixed(2) : "N/D"}
-ROE: ${(dados.roe * 100).toFixed(1)}% (retorno sobre patrimonio liquido)
-ROIC: ${dados.roic && dados.roic !== 0 ? (dados.roic * 100).toFixed(1) + "% (retorno sobre capital total investido — proxy: EBIT*(1-34%)/(divida+PL))" : "N/D"}
-ROI da posicao do usuario: ${
-        dados.roiPosicao !== undefined
-          ? (dados.roiPosicao * 100).toFixed(1) + "% (preco atual vs preco medio de compra)"
-          : "N/D (usuario nao tem posicao ou nao informou custo medio)"
-      }
-Dividend Yield: ${(dados.dividendYield * 100).toFixed(1)}%
-Divida/EBITDA: ${dados.debtToEbitda.toFixed(1)}x
-Margem Liquida: ${(dados.netMargin * 100).toFixed(1)}%
-=== FIM ===
+${metricasBlock}
 
-INSTRUCOES DE RENTABILIDADE:
-- Comente explicitamente ROE vs ROIC. Se ROIC < ROE de forma relevante, a empresa
-  esta gerando retorno alto sobre o PL graças à alavancagem; sinalize o risco.
-- Se ROIC > custo de capital implicito (>= SELIC + premio de risco ~5pp), e um
-  bom alocador de capital — vale como "PRO" na tese.
-- Se ROI da posicao do usuario estiver muito acima/abaixo da media historica do
-  papel, considere se faz sentido realizar/aportar dado o perfil do usuario.
+${instrucoesTipo}
 
 ${contextBlock}
 
-${RULES_REMINDER}
+${RULES_REMINDER_NEUTRAL}
 
 INSTRUCOES ADICIONAIS:
 - Ao mencionar eventos politicos/sociais/macro, SEMPRE cite a URL exata da
@@ -375,12 +419,11 @@ INSTRUCOES ADICIONAIS:
 Retorne SOMENTE um JSON valido, sem markdown:
 {
   "resumoTrimestral": "Resumo 2-3 frases combinando resultado + macro/politica relevante, com [n]",
-  "recomendacao": "COMPRAR" | "SEGURAR" | "VENDER",
-  "justificativa": "1-2 frases CURTAS sobre o angulo qualitativo (macro, noticia, setor, regulacao) que reforcam ou contradizem a tese. NAO repita Graham/Score/MoS — o app ja exibe esses numeros deterministicamente acima. Foque no que SO o LLM consegue dizer.",
+  "justificativa": "${justificativaHint}",
   "redFlags": ["alerta com [n] referenciando fonte (noticia, macro, RI ou calculo)"],
   "comparacaoTrimestre": "Comparacao com trimestre anterior + impacto macro em 1-2 frases com [n]",
   "periodoAnalisado": "ex: 3T24 vs 2T24",
-  "fontes": ["Yahoo Finance", "Banco Central do Brasil (SGS)", "calculo do app", "perfil do usuario", "https://noticia...", "${dadosRI.fonte || ""}"]
+  "fontes": ["Yahoo Finance", "Banco Central do Brasil (SGS)", "calculo do app", "https://noticia...", "${dadosRI.fonte || ""}"]
 }
 
 Responda em portugues brasileiro e NUNCA use emojis. Se faltar fonte para algo,
@@ -390,10 +433,13 @@ DEVE ter o link correspondente no array "fontes".`;
   const analise = await callAIServerless<AnaliseIA>(prompt, "json_object", "analise");
   analise.fonte = dadosRI.fonte || "";
 
-  const recsValidas = ["COMPRAR", "SEGURAR", "VENDER"];
-  if (!recsValidas.includes(analise.recomendacao)) {
-    analise.recomendacao = "SEGURAR";
-  }
+  // Recomendação NÃO vem mais do LLM (prompt é profile-agnostic p/ cache
+  // compartilhado): derivada deterministicamente de score + margem + perfil.
+  // Para FII, "margem" = desconto ao patrimônio (1 − P/VP); Graham não se aplica.
+  const margemParaRec = isFII
+    ? (dados.pvp > 0 ? (1 - dados.pvp) * 100 : 0)
+    : dados.margemSeguranca * 100;
+  analise.recomendacao = derivarRecomendacao(dados.score, margemParaRec, profile?.risk);
   if (!Array.isArray(analise.redFlags)) {
     analise.redFlags = [];
   }
@@ -758,35 +804,160 @@ Responda em portugues brasileiro, sem emojis. Toda recomendacao DEVE ter fontes.
   return result;
 }
 
+/* ─── Fase 4: Screener "Descobrir" ──────────────────────────────────────── */
+
+/** System curto pra extração pura — nao gasta a persona completa da Pra. */
+const SCREENER_SYSTEM =
+  "Voce traduz pedidos de investidores em filtros de screening de acoes da B3. " +
+  "Responda SOMENTE com JSON valido do schema pedido, sem texto, sem markdown.";
+
+const VALID_SORT: ScreenerSortBy[] = ["score", "dy", "roe", "marginOfSafety"];
+
+/** Aceita so numeros finitos e positivos; clampa ao intervalo plausivel. */
+function clampNum(v: unknown, min: number, max: number): number | undefined {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * Valida a saida do LLM contra o schema do `ScreenerFilter`. Descarta campos
+ * lixo, clampa numeros e filtra setores ao conjunto conhecido — a UI nunca
+ * recebe filtro inventado.
+ */
+function sanitizeScreenerFilter(raw: Record<string, unknown>): ScreenerFilter {
+  const f: ScreenerFilter = {};
+  const minScore = clampNum(raw.minScore, 0, 100);
+  if (minScore != null) f.minScore = minScore;
+  const minRoePct = clampNum(raw.minRoePct, 0, 100);
+  if (minRoePct != null) f.minRoePct = minRoePct;
+  const minDyPct = clampNum(raw.minDyPct, 0, 100);
+  if (minDyPct != null) f.minDyPct = minDyPct;
+  const maxPl = clampNum(raw.maxPl, 0, 1000);
+  if (maxPl != null) f.maxPl = maxPl;
+  const maxPvp = clampNum(raw.maxPvp, 0, 100);
+  if (maxPvp != null) f.maxPvp = maxPvp;
+  const maxDebtToEbitda = clampNum(raw.maxDebtToEbitda, 0, 100);
+  if (maxDebtToEbitda != null) f.maxDebtToEbitda = maxDebtToEbitda;
+  const mos = clampNum(raw.minMarginOfSafetyPct, 0, 100);
+  if (mos != null) f.minMarginOfSafetyPct = mos;
+  if (Array.isArray(raw.sectors)) {
+    const valid = raw.sectors.filter(
+      (s): s is string => typeof s === "string" && SCREENER_SECTORS.includes(s)
+    );
+    if (valid.length > 0) f.sectors = valid;
+  }
+  if (typeof raw.sortBy === "string" && VALID_SORT.includes(raw.sortBy as ScreenerSortBy)) {
+    f.sortBy = raw.sortBy as ScreenerSortBy;
+  }
+  return f;
+}
+
+/**
+ * Traduz o pedido em linguagem natural ("acoes pra dividendos com crescimento")
+ * em um `ScreenerFilter`. Extração pura: system curto, sem citacoes (nao ha
+ * recomendacao aqui — so filtros). O ranking/filtro real roda em `screener.ts`
+ * sobre dados REAIS do Yahoo.
+ */
+export async function parseScreenerQuery(
+  text: string,
+  profile: InvestorProfile | null = null
+): Promise<ScreenerFilter> {
+  const q = text.trim();
+  if (!q) return {};
+
+  const prompt = `Traduza o pedido do usuario em filtros de screening fundamentalista da B3.
+
+PEDIDO: "${q}"
+${profile ? describeProfile(profile) : ""}
+
+Setores validos (use EXATAMENTE estes rotulos no array "sectors", ou omita): ${SCREENER_SECTORS.join(", ")}
+
+Campos (todos OPCIONAIS — inclua so os que o pedido sugerir; NAO mande campo com 0):
+- minScore (0-100): qualidade fundamentalista geral
+- minRoePct (ex 15): rentabilidade minima em %
+- minDyPct (ex 6): dividend yield minimo em %
+- maxPl (ex 12): preco/lucro maximo
+- maxPvp (ex 2): preco/valor patrimonial maximo
+- maxDebtToEbitda (ex 2): alavancagem maxima
+- minMarginOfSafetyPct (ex 20): desconto minimo vs preco-justo de Graham em %
+- sectors: array de rotulos validos da lista acima
+- sortBy: "score" | "dy" | "roe" | "marginOfSafety"
+
+Pistas:
+- "dividendos"/"renda passiva" -> minDyPct ~6 + sortBy "dy".
+- "baratas"/"desconto"/"valor"/"margem de seguranca" -> minMarginOfSafetyPct ~20 + sortBy "marginOfSafety".
+- "qualidade"/"solidas"/"boas empresas" -> minScore ~60 + sortBy "score".
+- "rentaveis"/"crescimento"/"ROE alto" -> minRoePct ~15 + sortBy "roe".
+- "pouco endividadas"/"saudaveis" -> maxDebtToEbitda ~2.
+- Sem pista numerica clara: deixe vazio e sortBy "score".
+
+Retorne SOMENTE JSON, sem markdown. Exemplo de formato (omita as chaves que nao se aplicam):
+{"minDyPct":6,"sortBy":"dy"}`;
+
+  const raw = await callAIServerless<Record<string, unknown>>(
+    prompt,
+    "json_object",
+    "screener",
+    SCREENER_SYSTEM
+  );
+  return sanitizeScreenerFilter(raw && typeof raw === "object" ? raw : {});
+}
+
 // PRAXIA_SYSTEM_PROMPT mestre vive em src/lib/praxiaPrompt.ts (re-exportado no topo).
+
+/** Capability interna → feature de billing (gate/uso). */
+const FEATURE_BY_CAPABILITY: Record<
+  "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" | "screener",
+  PaywalledFeature
+> = {
+  analise: "ai-analysis",
+  insights: "portfolio-insights",
+  comparacao: "compare",
+  news_topic: "classify-news",
+  news_feed: "classify-news",
+  screener: "screener",
+};
 
 async function callAIServerless<T>(
   prompt: string,
   responseFormat: string = "text",
-  capability: "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" = "insights"
+  capability: "analise" | "insights" | "comparacao" | "news_topic" | "news_feed" | "screener" = "insights",
+  /**
+   * Substitui o PRAXIA_SYSTEM_PROMPT por um system curto. Usado em tarefas de
+   * extração pura (ex.: traduzir busca → filtros), onde a persona completa da
+   * Pra só desperdiçaria tokens.
+   */
+  systemOverride?: string
 ): Promise<T> {
+  const systemPrompt = systemOverride ?? PRAXIA_SYSTEM_PROMPT;
   // Rate-limit preventivo — barra antes de bater 429 no provider gratuito.
   const gate = checkRateLimit();
   if (!gate.allowed) {
     const seconds = Math.ceil(gate.retryAfterMs / 1000);
     throw new Error(
-      `Limite de chamadas IA atingido (Groq free tier). Aguarde ~${seconds}s.`
+      `Limite de chamadas IA atingido. Aguarde ~${seconds}s.`
     );
   }
 
+  // Feature de billing derivada da capability (granularidade do paywall/uso).
+  const feature = FEATURE_BY_CAPABILITY[capability];
   const response = await fetch(AI_API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
     body: JSON.stringify({
       messages: [
-        { role: "system", content: PRAXIA_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
       max_tokens: 1200,
       response_format: { type: responseFormat },
+      feature,
     }),
   });
+
+  await throwIfPaywalled(response, feature);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -803,7 +974,7 @@ async function callAIServerless<T>(
   // Telemetria: estimativa de tokens in (system prompt + user) / out (resposta).
   recordCall(
     capability,
-    estimateTokens(PRAXIA_SYSTEM_PROMPT) + estimateTokens(prompt),
+    estimateTokens(systemPrompt) + estimateTokens(prompt),
     estimateTokens(String(textContent))
   );
 
@@ -819,4 +990,119 @@ async function callAIServerless<T>(
     console.error("Erro ao fazer parse da resposta IA:", textContent);
     throw new Error("Erro ao interpretar resposta da IA. Tente novamente.");
   }
+}
+
+/* ─── Fase 5: Rebalanceador ──────────────────────────────────────────────
+ * Tipos e prompt locais (sem novo import no topo) para manter este bloco
+ * isolado e fácil de mesclar. A matemática vive em `lib/rebalance.ts`; aqui a
+ * IA só comenta o plano JÁ calculado — nunca decide quantidades. */
+
+/** Resumo compacto de um setor para o prompt (IDs + métricas, não payload bruto). */
+export interface RebalanceSectorSummary {
+  sector: string;
+  currentPct: number;
+  targetPct: number;
+}
+
+/** Ordem já calculada deterministicamente, descrita para a IA. */
+export interface RebalanceOrderSummary {
+  ticker: string;
+  action: "buy" | "sell";
+  shares: number;
+  estValue: number;
+  sector: string;
+  score: number;
+}
+
+export interface RebalanceExplainInput {
+  totalValue: number;
+  sectors: RebalanceSectorSummary[];
+  orders: RebalanceOrderSummary[];
+  unmetSectors: { sector: string; neededBRL: number }[];
+}
+
+export interface RebalanceExplicacaoIA {
+  resumo: string;
+  /** Armadilhas/avisos (ex.: vender antes do ex-dividendo, custo de IR). */
+  alertas: string[];
+  fontes: string[];
+}
+
+/**
+ * Explica em linguagem natural um plano de rebalanceamento determinístico,
+ * destacando armadilhas (ex.: vender antes do ex-dividendo, gerar IR). Recebe
+ * só o resumo (setores + ordens), nunca a carteira inteira — frugal em tokens.
+ */
+export async function explicarRebalanceamento(
+  input: RebalanceExplainInput,
+  profile: InvestorProfile | null = null
+): Promise<RebalanceExplicacaoIA> {
+  const sectorLines = input.sectors
+    .map(
+      (s) =>
+        `- ${s.sector}: atual ${s.currentPct.toFixed(0)}% → alvo ${s.targetPct.toFixed(0)}%`
+    )
+    .join("\n");
+
+  const orderLines =
+    input.orders.length > 0
+      ? input.orders
+          .map(
+            (o) =>
+              `- ${o.action === "buy" ? "COMPRAR" : "VENDER"} ${o.shares} ${o.ticker} ` +
+              `(~R$${o.estValue.toFixed(2)}, setor ${o.sector}, score ${o.score}/100)`
+          )
+          .join("\n")
+      : "(Nenhuma ordem — carteira já alinhada aos alvos.)";
+
+  const unmetLines =
+    input.unmetSectors.length > 0
+      ? input.unmetSectors
+          .map((u) => `- ${u.sector}: faltam ~R$${u.neededBRL.toFixed(2)} e não há ativo desse setor na carteira`)
+          .join("\n")
+      : "(nenhum)";
+
+  const prompt = `Voce e Pra, analista da Praxia especializada em B3. O usuario quer
+rebalancear a carteira. As ORDENS abaixo JA foram calculadas deterministicamente
+pelo app (voce NAO recalcula quantidades). Explique o plano e aponte armadilhas.
+
+${describeProfile(profile)}
+
+Patrimonio total: R$${input.totalValue.toFixed(2)} (fonte: calculo do app)
+
+=== ALOCACAO SETORIAL (atual -> alvo) ===
+${sectorLines}
+
+=== ORDENS PROPOSTAS (ja calculadas) ===
+${orderLines}
+
+=== SETORES-ALVO SEM ATIVO NA CARTEIRA ===
+${unmetLines}
+
+${RULES_REMINDER}
+
+REGRAS DURAS:
+- Nao invente tickers nem quantidades. Comente APENAS as ordens acima.
+- "alertas": ate 3 armadilhas concretas (ex.: vender pode antecipar IR sobre lucro;
+  conferir data ex-dividendo antes de reduzir um pagador; custo de corretagem).
+- Se houver setor sem ativo, sugira no resumo adicionar um ativo daquele setor.
+
+Retorne SOMENTE um JSON valido, sem markdown:
+{
+  "resumo": "Comece com 'Pelo seu perfil [risco]...'. 2-3 frases explicando o racional do plano com referencias [1], [2].",
+  "alertas": ["armadilha 1 [n]", "armadilha 2 [n]"],
+  "fontes": ["calculo do app", "perfil do usuario"]
+}
+
+Responda em portugues brasileiro, sem emojis.`;
+
+  const result = await callAIServerless<RebalanceExplicacaoIA>(prompt, "json_object", "insights");
+
+  return {
+    resumo: result.resumo ?? "",
+    alertas: Array.isArray(result.alertas) ? result.alertas : [],
+    fontes: Array.isArray(result.fontes) && result.fontes.length > 0
+      ? result.fontes
+      : ["calculo do app", "perfil do usuario"],
+  };
 }

@@ -2,6 +2,7 @@ import type { InvestorProfile } from "@/types/stock";
 import type { NewsItem } from "./context";
 import { fetchTickerNews } from "./context";
 import { PRAXIA_SYSTEM_PROMPT, JSON_ONLY_SUFFIX } from "./praxiaPrompt";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
 
 /**
  * Notícias por ação + sentimento e impacto, classificadas pela IA em batch.
@@ -176,7 +177,7 @@ REGRAS:
   try {
     response = await fetch(AI_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
       body: JSON.stringify({
         messages: [
           { role: "system", content: PRAXIA_SYSTEM_PROMPT },
@@ -185,6 +186,7 @@ REGRAS:
         temperature: 0.3,
         max_tokens: 1200,
         response_format: { type: "json_object" },
+        feature: "classify-news",
       }),
       signal: controller.signal,
     });
@@ -196,6 +198,8 @@ REGRAS:
     throw e;
   }
   clearTimeout(timeoutId);
+
+  await throwIfPaywalled(response, "classify-news");
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

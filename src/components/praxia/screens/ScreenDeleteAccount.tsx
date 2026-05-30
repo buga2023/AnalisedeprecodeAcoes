@@ -6,6 +6,7 @@ import { SectionHeader } from "../SectionHeader";
 import { Icon } from "../Icon";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { erasePraxiaLocalKeys } from "@/lib/localKeys";
 
 /**
  * Tela "Excluir minhas informações" — LGPD Art. 18.
@@ -27,45 +28,6 @@ interface ScreenDeleteAccountProps {
   onBack: () => void;
   /** Acionado após o erase — App.tsx volta pro onboarding/login. */
   onErased: () => void;
-}
-
-const PRAXIA_KEYS = [
-  "stocks-ai-portfolio",
-  "stocks-ai-brapi-token",
-  "praxia-investor-profile",
-  "praxia-pra-chat",
-  "praxia-ui-prefs",
-  "praxia-transactions",
-  "stocks-ai-relatorios",
-  "stocks-ai-portfolio-insights",
-  "stocks-ai-provider-config",
-  "praxia-lgpd-consent",
-];
-
-function eraseAll(): { removidos: number } {
-  let count = 0;
-  // 1. Apaga as chaves canônicas do Praxia (lista enumerada).
-  for (const k of PRAXIA_KEYS) {
-    if (localStorage.getItem(k) !== null) {
-      localStorage.removeItem(k);
-      count += 1;
-    }
-  }
-  // 2. Apaga qualquer chave com prefixo `praxia-` ou `stocks-ai` (caches
-  //    por-ticker tipo `stocks-ai-analysis:PETR4` que crescem dinamicamente).
-  const dynamic: string[] = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i);
-    if (!key) continue;
-    if (key.startsWith("praxia-") || key.startsWith("stocks-ai")) {
-      dynamic.push(key);
-    }
-  }
-  for (const k of dynamic) {
-    localStorage.removeItem(k);
-    count += 1;
-  }
-  return { removidos: count };
 }
 
 async function eraseOnServer(accessToken: string): Promise<{ ok: boolean; partial: boolean; error?: string }> {
@@ -127,7 +89,7 @@ export function ScreenDeleteAccount({ accent, onBack, onErased }: ScreenDeleteAc
     }
 
     // 2) Sempre apaga o localStorage local — isto e garantido para o usuario.
-    const { removidos } = eraseAll();
+    const removidos = erasePraxiaLocalKeys();
 
     // Pequeno delay pra o usuário ver o estado mudar antes do redirect.
     window.setTimeout(() => {

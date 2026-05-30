@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { captureError, captureMessage, initTelemetry } from "./telemetry";
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("telemetry — captureError", () => {
@@ -49,11 +50,37 @@ describe("telemetry — captureMessage", () => {
 });
 
 describe("telemetry — initTelemetry", () => {
-  it("é no-op (não chama console.error/warn e não lança)", () => {
+  it("é no-op sem VITE_SENTRY_DSN (não chama console.error/warn e não lança)", () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(() => initTelemetry()).not.toThrow();
     expect(errSpy).not.toHaveBeenCalled();
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("telemetry — com VITE_SENTRY_DSN (forward pro Sentry)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.doUnmock("@sentry/react");
+    vi.resetModules();
+  });
+
+  it("initTelemetry carrega o Sentry e captureError encaminha (sem console.error)", async () => {
+    vi.stubEnv("VITE_SENTRY_DSN", "https://abc@o0.ingest.sentry.io/1");
+    const init = vi.fn();
+    const captureException = vi.fn();
+    vi.doMock("@sentry/react", () => ({ init, captureException, captureMessage: vi.fn() }));
+    vi.resetModules();
+    const tele = await import("./telemetry");
+
+    tele.initTelemetry();
+    // Espera o dynamic import de @sentry/react resolver e o init rodar.
+    await vi.waitFor(() => expect(init).toHaveBeenCalledTimes(1));
+
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    tele.captureError(new Error("boom"), { tag: "x" });
+    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(errSpy).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,7 @@ import { PraxiaTokens, fmt, genSeries } from "../tokens";
 import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { PraxiaLogo } from "../PraxiaLogo";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import { GlassButton } from "../GlassButton";
 import { Icon } from "../Icon";
 import { PraMark } from "../PraMark";
@@ -204,6 +205,8 @@ export function ScreenHome({
             </GlassButton>
           </div>
         </div>
+
+        <FeatureHintBanner hintKey="home" accent={accent} />
 
         {/* macro quotes strip */}
         <MacroQuotesStrip />

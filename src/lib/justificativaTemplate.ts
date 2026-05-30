@@ -43,7 +43,29 @@ function interpretarMos(mosPct: number, profile: InvestorProfile | null): string
  *    (R$ 47.18), com Score 72/100 (Observacao) e MoS +12.4% — margem
  *    moderada, ainda dentro do alvo para perfil moderado."
  */
+/**
+ * Justificativa para FIIs — Graham/LPA não se aplicam a cotas. Tese por DY,
+ * P/VP (desconto/ágio ao patrimônio) e segmento.
+ */
+function buildFIIJustificativa(stock: Stock, profile: InvestorProfile | null): string {
+  const dyPct = stock.dividendYield > 0 ? stock.dividendYield * 100 : 0;
+  const seg = stock.sector && stock.sector !== "—" ? `FII de ${stock.sector}` : "FII";
+  const nums: string[] = [];
+  if (dyPct > 0) nums.push(`DY ${dyPct.toFixed(1)}%`);
+  if (stock.pvp > 0) nums.push(`P/VP ${stock.pvp.toFixed(2)}`);
+
+  let tese = "renda mensal como tese central";
+  if (stock.pvp > 0 && stock.pvp <= 0.95) tese = "negociando com desconto ao valor patrimonial";
+  else if (stock.pvp > 0 && stock.pvp <= 1.05) tese = "próximo do valor patrimonial";
+  else if (stock.pvp > 1.15) tese = "com ágio relevante sobre o patrimônio";
+
+  const numsStr = nums.length ? `, ${nums.join(" e ")}` : "";
+  return `Pelo seu perfil ${riskTerm(profile)}, ${stock.ticker} (${seg}) tem Score ${stock.score}/100 (${getScoreLabel(stock.score)})${numsStr} — ${tese}. Graham não se aplica a FIIs; avalie por DY, P/VP e vacância.`;
+}
+
 export function buildJustificativaTemplate(stock: Stock, profile: InvestorProfile | null): string {
+  if (stock.assetType === "fii") return buildFIIJustificativa(stock, profile);
+
   const graham = calculateGrahamValue(stock.lpa, stock.vpa);
   const hasGraham = graham > 0 && Number.isFinite(graham);
 

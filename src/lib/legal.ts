@@ -6,7 +6,7 @@
  * ex-Instrução 598), exige cuidado: posicionamos como conteúdo educacional,
  * NUNCA como recomendação personalizada de investimento.
  *
- * Última revisão: 2026-05-28.
+ * Última revisão: 2026-05-30.
  */
 
 export const CVM_DISCLAIMER =
@@ -19,8 +19,9 @@ export const CVM_DISCLAIMER_SHORT =
 
 export const LGPD_COOKIE_NOTICE =
   "O Praxia guarda seu portfólio, perfil de investidor e preferências no seu dispositivo (localStorage) e, " +
-  "quando você cria conta, também em servidor seguro (Supabase) vinculado ao seu e-mail — você pode apagar " +
-  "tudo em \"Meu Perfil → Excluir minhas informações\". Ao continuar, você concorda com nossa Política de Privacidade.";
+  "quando você cria conta, também em servidor seguro (Supabase) vinculado ao seu e-mail. Esses dados são " +
+  "essenciais para o app funcionar (base legal: execução de contrato) — você pode exportar ou apagar tudo " +
+  "quando quiser em \"Meu Perfil\". Saiba mais na nossa Política de Privacidade.";
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Texto-base das páginas. Versionado aqui para que mudanças passem por code
@@ -29,7 +30,7 @@ export const LGPD_COOKIE_NOTICE =
  * ─────────────────────────────────────────────────────────────────────── */
 
 export const PRIVACY_POLICY = {
-  vigorEm: "2026-05-28",
+  vigorEm: "2026-05-30",
   titulo: "Política de Privacidade",
   intro:
     "O Praxia é um aplicativo de análise fundamentalista de ações brasileiras. " +
@@ -42,10 +43,21 @@ export const PRIVACY_POLICY = {
         "No seu dispositivo (localStorage): tickers da sua carteira (`stocks-ai-portfolio`), conversas com a Pra (`praxia-pra-chat`), alertas configurados, caches de análise IA e de notícias. Esses ficam só no seu navegador.",
         "No servidor (Supabase, AWS São Paulo) — apenas quando você cria conta: seu e-mail, identificador único de usuário, carteira (ticker, quantidade, preço médio), histórico de transações simuladas, perfil de investidor (risco/horizonte/interesses do quiz) e preferências de UI (cor, tom da Pra). A separação entre usuários é garantida por Row Level Security do Supabase — ninguém vê o que é seu.",
         "Você pode apagar tudo (dispositivo + servidor + conta) a qualquer momento em \"Meu Perfil → Excluir minhas informações\".",
+        "Retenção: os dados ficam enquanto sua conta existir. Ao excluir a conta, são apagados imediatamente — no dispositivo e no servidor.",
       ],
     },
     {
-      titulo: "2. Para quem o Praxia envia dados",
+      titulo: "2. Base legal de cada tratamento",
+      conteudo: [
+        "O Praxia trata seus dados com as seguintes bases legais (LGPD Art. 7):",
+        "• E-mail e autenticação: execução de contrato (Art. 7, V) — sem isso não há como criar nem proteger sua conta.",
+        "• Carteira, perfil de investidor, transações simuladas e preferências: execução de contrato (Art. 7, V) — são os dados essenciais para o app entregar a análise que você pediu. Não há tratamento para finalidade secundária (sem marketing, sem venda de dados).",
+        "• Endereço IP das requisições (Vercel e proxies de dados): legítimo interesse (Art. 7, IX) — necessário para segurança, limite de uso (rate-limit) e operação da infraestrutura.",
+        "• Cobrança (quando ativada em versões futuras): execução de contrato e obrigação legal/fiscal.",
+      ],
+    },
+    {
+      titulo: "3. Para quem o Praxia envia dados",
       conteudo: [
         "Quando você usa a Pra (chat) ou pede uma análise, o servidor do Praxia repassa SOMENTE o necessário para os seguintes processadores externos:",
         "• Supabase Inc. (autenticação e banco de dados, AWS sa-east-1) — recebe seu e-mail (para magic link), identificador único da conta e os dados de portfólio/perfil/transações listados acima.",
@@ -58,33 +70,39 @@ export const PRIVACY_POLICY = {
       ],
     },
     {
-      titulo: "3. Cookies e tecnologias similares",
+      titulo: "4. Transferência internacional",
+      conteudo: [
+        "Alguns processadores ficam fora do Brasil. Suas mensagens e o contexto da carteira (sem nome, e-mail ou CPF) podem ser processados por provedores de IA nos Estados Unidos — OpenRouter, Groq, OpenAI, Anthropic ou Google, conforme o roteamento. As fontes públicas de notícia e a Vercel também operam no exterior.",
+        "Essas transferências internacionais (LGPD Art. 33) limitam-se ao necessário para a finalidade e seguem os termos de cada provedor. Já os dados de conta (e-mail, carteira, perfil, transações) ficam no Supabase em São Paulo (AWS sa-east-1).",
+      ],
+    },
+    {
+      titulo: "5. Cookies e tecnologias similares",
       conteudo: [
         "O Praxia NÃO usa cookies de rastreamento ou publicidade. Usamos APENAS localStorage para guardar seu portfólio e preferências no seu dispositivo.",
         "Não usamos Google Analytics, Meta Pixel ou similares.",
       ],
     },
     {
-      titulo: "4. Seus direitos (LGPD, Lei 13.709/2018)",
+      titulo: "6. Seus direitos (LGPD, Lei 13.709/2018)",
       conteudo: [
         "Você pode, a qualquer momento:",
-        "• Acessar — dados locais ficam no localStorage do navegador (abra DevTools); dados no servidor são listados sob pedido para o DPO.",
+        "• Acessar e exportar (portabilidade) — baixe tudo em \"Meu Perfil → Exportar meus dados\": um arquivo JSON estruturado com seus dados do dispositivo e, se logado, do servidor. É portável para outro serviço.",
         "• Corrigir ou atualizar via interface do app.",
         "• Excluir tudo em \"Meu Perfil → Excluir minhas informações\" — apaga o localStorage do dispositivo, todas as linhas no Supabase vinculadas ao seu user_id e a conta de login.",
-        "• Pedir portabilidade — exportar via \"Exportar resultados\" na tela de Análise em lote.",
         "Para qualquer dúvida sobre seus dados, escreva para o responsável pelo tratamento (DPO) abaixo.",
       ],
     },
     {
-      titulo: "5. Controlador e contato (DPO)",
+      titulo: "7. Controlador e contato (DPO)",
       conteudo: [
         "Praxia é mantido por Gustavo Santos. Contato: gustavo.santos@gpce.com.br.",
       ],
     },
     {
-      titulo: "6. Mudanças futuras nesta política",
+      titulo: "8. Mudanças futuras nesta política",
       conteudo: [
-        "Quando o Praxia introduzir cobrança (próximas versões), esta política será atualizada com: gateway de pagamento (Mercado Pago) e e-mail transacional como processadores adicionais, bases legais ampliadas e prazo de retenção. Você será avisado dentro do app antes da mudança entrar em vigor.",
+        "Quando o Praxia introduzir cobrança (próximas versões), esta política será atualizada com gateway de pagamento (Mercado Pago) e e-mail transacional como processadores adicionais. Você será avisado dentro do app antes da mudança entrar em vigor.",
       ],
     },
   ],

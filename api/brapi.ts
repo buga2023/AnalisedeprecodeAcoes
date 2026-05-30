@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { applyCors } from './_cors';
 import { checkRateLimit } from './_ratelimit';
+import { getYahooCreds, clearYahooCreds } from './_yahooCrumb';
 
 // Aceita tickers B3 (PETR4, SANB11), US (AAPL), índices (^BVSP) e pares
 // (BRK-B, USDBRL=X). Rejeita lixo/SSRF cedo. Limite de 12 chars já corta
@@ -259,25 +260,36 @@ async function fetchYahooSummary(ticker: string) {
   return {};
 }
 
-async function fetchYahooSummaryOnce(symbol: string) {
+async function fetchYahooSummaryOnce(symbol: string, retryAuth = true): Promise<Record<string, unknown> | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 7000);
 
   try {
-    const modules = "defaultKeyStatistics,financialData,incomeStatementHistoryQuarterly,balanceSheetHistoryQuarterly,cashflowStatementHistoryQuarterly";
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
+    const modules = "defaultKeyStatistics,summaryDetail,financialData,incomeStatementHistoryQuarterly,balanceSheetHistoryQuarterly,cashflowStatementHistoryQuarterly";
+    // quoteSummary v10 exige crumb + cookie (senão 401 "Invalid Crumb" e os
+    // fundamentos vêm vazios). Se o crumb falhar, segue sem ele (degradação).
+    const creds = await getYahooCreds(YAHOO_HEADERS);
+    const crumbParam = creds ? `&crumb=${encodeURIComponent(creds.crumb)}` : "";
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}${crumbParam}`;
 
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: YAHOO_HEADERS,
+      headers: creds ? { ...YAHOO_HEADERS, Cookie: creds.cookie } : YAHOO_HEADERS,
     });
 
+    // Crumb expirado/invalidado → limpa cache e tenta uma vez com credenciais frescas.
+    if (res.status === 401 && retryAuth) {
+      clearTimeout(timeoutId);
+      clearYahooCreds();
+      return fetchYahooSummaryOnce(symbol, false);
+    }
     if (!res.ok) return null;
     const data = await res.json();
     const result = data.quoteSummary?.result?.[0];
     if (!result) return null;
 
     const stats = result.defaultKeyStatistics || {};
+    const summary = result.summaryDetail || {};
     const fin = result.financialData || {};
     const balance = result.balanceSheetHistoryQuarterly?.balanceSheetStatements?.[0] || {};
     const cash = result.cashflowStatementHistoryQuarterly?.cashflowStatements?.[0] || {};
@@ -286,7 +298,8 @@ async function fetchYahooSummaryOnce(symbol: string) {
       earningsPerShare: stats.trailingEps?.raw || 0,
       bookValue: stats.bookValue?.raw || 0,
       priceEarnings: stats.trailingPE?.raw || 0,
-      dividendYield: (stats.dividendYield?.raw || 0) * 100,
+      // Fração (0.09 = 9%) — o que a UI (*100 ao exibir) e calculateStockScore (>0.06) esperam.
+      dividendYield: summary.dividendYield?.raw ?? summary.trailingAnnualDividendYield?.raw ?? stats.dividendYield?.raw ?? 0,
       enterpriseValue: stats.enterpriseValue?.raw || 0,
       financialData: {
         returnOnEquity: (fin.returnOnEquity?.raw || 0) * 100,

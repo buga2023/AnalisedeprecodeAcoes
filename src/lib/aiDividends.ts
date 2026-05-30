@@ -17,6 +17,7 @@
 import type { InvestorProfile, Stock } from "@/types/stock";
 import type { MonthBucket } from "./dividends";
 import { PRAXIA_SYSTEM_PROMPT } from "./praxiaPrompt";
+import { aiAuthHeaders, throwIfPaywalled } from "./aiAuth";
 
 const AI_API_URL = "/api/ai";
 
@@ -150,7 +151,7 @@ Responda em portugues brasileiro, sem emojis. Maximo 5 sugestoes, priorizadas po
 async function callAIForDividends(prompt: string): Promise<unknown> {
   const response = await fetch(AI_API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...aiAuthHeaders() },
     body: JSON.stringify({
       messages: [
         { role: "system", content: PRAXIA_SYSTEM_PROMPT },
@@ -159,8 +160,11 @@ async function callAIForDividends(prompt: string): Promise<unknown> {
       temperature: 0.6,
       max_tokens: 1000,
       response_format: { type: "json_object" },
+      feature: "optimize-dividends",
     }),
   });
+
+  await throwIfPaywalled(response, "optimize-dividends");
 
   if (!response.ok) {
     const errorData: { error?: string } = await response.json().catch(() => ({}));

@@ -13,6 +13,7 @@ import {
   getValuationStatus,
   calculateStockScore,
   getScoreLabel,
+  derivarRecomendacao,
 } from "./calculators";
 
 describe("calculateGrahamValue", () => {
@@ -255,5 +256,36 @@ describe("getScoreLabel", () => {
   });
   it("retorna Risco Elevado abaixo de 50", () => {
     expect(getScoreLabel(40)).toBe("Risco Elevado");
+  });
+});
+
+describe("derivarRecomendacao", () => {
+  it("score alto + margem boa → COMPRAR (todos os perfis)", () => {
+    expect(derivarRecomendacao(85, 30, "low")).toBe("COMPRAR");
+    expect(derivarRecomendacao(85, 30, "mid")).toBe("COMPRAR");
+    expect(derivarRecomendacao(85, 30, "high")).toBe("COMPRAR");
+  });
+
+  it("score baixo → VENDER", () => {
+    expect(derivarRecomendacao(30, 0, "mid")).toBe("VENDER");
+  });
+
+  it("preço bem acima do Graham (MoS muito negativa) → VENDER", () => {
+    expect(derivarRecomendacao(70, -25, "high")).toBe("VENDER");
+  });
+
+  it("perfil conservador exige mais margem que arrojado p/ comprar", () => {
+    // MoS 12%: arrojado compra, conservador não (precisa 20%).
+    expect(derivarRecomendacao(70, 12, "high")).toBe("COMPRAR");
+    expect(derivarRecomendacao(70, 12, "low")).toBe("SEGURAR");
+  });
+
+  it("zona intermediária → SEGURAR", () => {
+    expect(derivarRecomendacao(55, 5, "mid")).toBe("SEGURAR");
+  });
+
+  it("perfil ausente usa limiares moderados", () => {
+    expect(derivarRecomendacao(60, 10, null)).toBe("COMPRAR");
+    expect(derivarRecomendacao(60, 10, undefined)).toBe("COMPRAR");
   });
 });

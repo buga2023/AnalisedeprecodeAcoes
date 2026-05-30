@@ -172,7 +172,10 @@ describe("fetchAIInsights", () => {
 });
 
 describe("analisarAcaoComIA", () => {
-  it("normaliza recomendação inválida para SEGURAR e garante arrays", async () => {
+  it("deriva recomendação deterministicamente (ignora a do LLM) e garante arrays", async () => {
+    // O núcleo é profile-agnostic; a recomendação vem de derivarRecomendacao
+    // (score + MoS + perfil), não mais do LLM. Aqui: score 80 + MoS 40% sem
+    // perfil → COMPRAR, independentemente do que o mock "recomendaria".
     vi.stubGlobal(
       "fetch",
       makeContextFetch({
@@ -201,9 +204,25 @@ describe("analisarAcaoComIA", () => {
         netMargin: 0.1,
       }
     );
-    expect(out.recomendacao).toBe("SEGURAR");
+    expect(out.recomendacao).toBe("COMPRAR");
     expect(Array.isArray(out.redFlags)).toBe(true);
     expect(out.fontes).toEqual(expect.arrayContaining(["Yahoo Finance", "calculo do app"]));
+  });
+
+  it("FII: recomendação vem do desconto ao patrimônio (1−P/VP), não de Graham", async () => {
+    vi.stubGlobal("fetch", makeContextFetch({ resumoTrimestral: "x", justificativa: "y", redFlags: null, comparacaoTrimestre: "z", periodoAnalisado: "—", fontes: null }));
+    // FII com desconto (P/VP 0.85 → margem +15%) + score alto → COMPRAR.
+    const compra = await analisarAcaoComIA("HGLG11", "CSHG Log FII", {
+      cotacao: 150, precoTeto: 0, margemSeguranca: 0, score: 85, pl: 0, pvp: 0.85,
+      roe: 0, dividendYield: 0.09, debtToEbitda: 0, netMargin: 0, assetType: "fii", segment: "Logística",
+    });
+    expect(compra.recomendacao).toBe("COMPRAR");
+    // FII com ágio (P/VP 1.4 → margem −40%) → VENDER, mesmo com score alto.
+    const venda = await analisarAcaoComIA("XPML11", "XP Malls FII", {
+      cotacao: 100, precoTeto: 0, margemSeguranca: 0, score: 85, pl: 0, pvp: 1.4,
+      roe: 0, dividendYield: 0.07, debtToEbitda: 0, netMargin: 0, assetType: "fii", segment: "Shopping",
+    });
+    expect(venda.recomendacao).toBe("VENDER");
   });
 });
 

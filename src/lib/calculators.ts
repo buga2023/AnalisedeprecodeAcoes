@@ -277,3 +277,33 @@ export const getScoreLabel = (score: number): ScoreLabel => {
   if (score >= 50) return 'Observação';
   return 'Risco Elevado';
 };
+
+/**
+ * Recomendação COMPRAR/SEGURAR/VENDER derivada DETERMINISTICAMENTE de
+ * score + margem de segurança + perfil de risco. Antes era decidida pelo LLM
+ * (acoplando o prompt ao perfil e impedindo reuso do cache entre usuários);
+ * agora a parte factual da análise é profile-agnostic (cacheável/compartilhada)
+ * e a recomendação personalizada é montada aqui, em código.
+ *
+ * @param score 0–100 (score fundamentalista do app)
+ * @param mosPct margem de segurança em PERCENTUAL (ex.: 12 = 12%)
+ * @param risk perfil de risco; perfis conservadores exigem mais margem/score.
+ */
+export const derivarRecomendacao = (
+  score: number,
+  mosPct: number,
+  risk: 'low' | 'mid' | 'high' | null | undefined
+): 'COMPRAR' | 'SEGURAR' | 'VENDER' => {
+  // Limiares por perfil: conservador exige mais folga p/ comprar e vende antes;
+  // arrojado tolera menos margem e segura por mais tempo.
+  const t =
+    risk === 'low'
+      ? { buyScore: 65, buyMos: 20, sellScore: 45, sellMos: -5 }
+      : risk === 'high'
+        ? { buyScore: 55, buyMos: 0, sellScore: 35, sellMos: -20 }
+        : { buyScore: 60, buyMos: 10, sellScore: 40, sellMos: -10 };
+
+  if (score >= t.buyScore && mosPct >= t.buyMos) return 'COMPRAR';
+  if (score < t.sellScore || mosPct < t.sellMos) return 'VENDER';
+  return 'SEGURAR';
+};

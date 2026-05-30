@@ -53,16 +53,18 @@ Three AI capabilities, all routed through `POST /api/ai` (server-side env vars �
 
 ### Multi-provider IA (env-driven)
 
-`api/ai.ts` resolves the provider in this order: `request.body.provider` → `process.env.AI_PROVIDER` → `'groq'` (default). API key from the matching env var. Returns 503 when missing.
+`api/ai.ts` resolves the provider in this order: `request.body.provider` → `process.env.AI_PROVIDER` → `'openrouter'` (default). API key from the matching env var. Returns 503 when missing.
 
 ```bash
 # .env.local (and Vercel env)
-GROQ_API_KEY=...          # default; Groq has a free tier
+OPENROUTER_API_KEY=...    # default; OpenRouter has free models (e.g. llama-3.3-70b:free)
+OPENROUTER_MODEL=...      # optional; default meta-llama/llama-3.3-70b-instruct:free
 # OR any of:
+GROQ_API_KEY=...          # Groq has a free tier
 OPENAI_API_KEY=...        # gpt-4o
 ANTHROPIC_API_KEY=...     # claude-3-5-sonnet
 GEMINI_API_KEY=...        # gemini-1.5-flash
-AI_PROVIDER=groq          # optional explicit selection
+AI_PROVIDER=openrouter    # optional explicit selection
 ```
 
 ## Score breakdown (`calculateStockScore` in `src/lib/calculators.ts`)
