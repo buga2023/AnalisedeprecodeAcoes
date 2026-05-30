@@ -62,6 +62,26 @@ describe("legal — PRIVACY_POLICY", () => {
     expect(all).toMatch(/Yahoo/i);
     expect(all).toMatch(/Vercel/i);
   });
+
+  it("declara base legal (execução de contrato + legítimo interesse, Art. 7)", () => {
+    const all = PRIVACY_POLICY.secoes.flatMap((s) => [s.titulo, ...s.conteudo]).join(" ");
+    expect(all).toMatch(/base legal/i);
+    expect(all).toMatch(/execução de contrato/i);
+    expect(all).toMatch(/leg[íi]timo interesse/i);
+    expect(all).toMatch(/Art\. 7/);
+  });
+
+  it("declara transferência internacional (Art. 33)", () => {
+    const all = PRIVACY_POLICY.secoes.flatMap((s) => [s.titulo, ...s.conteudo]).join(" ");
+    expect(all).toMatch(/transfer[êe]ncia internacional/i);
+    expect(all).toMatch(/Art\. 33/);
+  });
+
+  it("aponta a portabilidade para 'Exportar meus dados' (não mais 'Exportar resultados')", () => {
+    const all = PRIVACY_POLICY.secoes.flatMap((s) => [s.titulo, ...s.conteudo]).join(" ");
+    expect(all).toMatch(/Exportar meus dados/i);
+    expect(all).not.toMatch(/Exportar resultados/i);
+  });
 });
 
 describe("legal — TERMS_OF_USE", () => {
