@@ -82,7 +82,7 @@ export function ScreenProfile({
     setAiStats(getStats());
     // Toast simples sem dep — alert nativo. Pode evoluir pra Sonner depois.
     if (removed > 0) {
-      // eslint-disable-next-line no-console
+       
       console.info(`[Praxia] cache ${kind} limpo: ${removed} entrada(s).`);
     }
   };

@@ -19,7 +19,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   // Aviso visivel no console em DEV — em PROD, qualquer call ao supabase quebra
   // claramente (mensagem do proprio sdk).
-  // eslint-disable-next-line no-console
+   
   console.warn(
     "[Praxia] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY ausentes. " +
       "Auth e persistencia server-side estao desabilitados. " +
