@@ -102,9 +102,13 @@ begin
 end;
 $$;
 
--- Apenas roles autenticados podem chamar (servidor com service_role tem acesso total).
+-- Apenas o servidor chama esta funcao (via service_role, que ignora grants e
+-- tem acesso total). NAO conceder a `authenticated`: como a funcao e
+-- `security definer` e recebe `p_user_id` arbitrario, expo-la via PostgREST RPC
+-- deixaria qualquer usuario logado incrementar o contador de uso de OUTRO
+-- usuario (cross-tenant write — empurra a vitima alem do limite free). O server
+-- nao precisa do grant, entao a funcao fica restrita a service_role.
 revoke all on function public.increment_usage(uuid, text) from public;
-grant execute on function public.increment_usage(uuid, text) to authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- 4) View pra leitura agregada do mês corrente (uso opcional pelo client)
