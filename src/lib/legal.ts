@@ -19,8 +19,9 @@ export const CVM_DISCLAIMER_SHORT =
 
 export const LGPD_COOKIE_NOTICE =
   "O Praxia guarda seu portfólio, perfil de investidor e preferências no seu dispositivo (localStorage) e, " +
-  "quando você cria conta, também em servidor seguro (Supabase) vinculado ao seu e-mail — você pode apagar " +
-  "tudo em \"Meu Perfil → Excluir minhas informações\". Ao continuar, você concorda com nossa Política de Privacidade.";
+  "quando você cria conta, também em servidor seguro (Supabase) vinculado ao seu e-mail. Esses dados são " +
+  "essenciais para o app funcionar (base legal: execução de contrato) — você pode exportar ou apagar tudo " +
+  "quando quiser em \"Meu Perfil\". Saiba mais na nossa Política de Privacidade.";
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Texto-base das páginas. Versionado aqui para que mudanças passem por code

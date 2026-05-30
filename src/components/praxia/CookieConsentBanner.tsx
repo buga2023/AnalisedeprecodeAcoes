@@ -4,15 +4,17 @@ import { Icon } from "./Icon";
 import { LGPD_COOKIE_NOTICE } from "@/lib/legal";
 
 /**
- * Banner de consentimento LGPD — primeira visita.
+ * Aviso de privacidade LGPD — primeira visita.
  *
  * O Praxia não usa cookies de rastreamento, só localStorage para portfólio e
- * preferências. Mesmo assim a LGPD (Art. 8) exige consentimento explícito
- * antes do tratamento. Aceitar grava `praxia-lgpd-consent` em localStorage
- * com a versão do texto + timestamp, para podermos exigir reconsent quando
- * o texto mudar.
+ * preferências. Como o armazenamento é ESSENCIAL para o app funcionar, a base
+ * legal é execução de contrato (LGPD Art. 7, V) — por isso este é um aviso de
+ * transparência, não um pedido de consentimento, e não há opção de "recusar"
+ * (recusar equivaleria a não usar o app). "Entendi" grava `praxia-lgpd-consent`
+ * em localStorage (versão do texto + timestamp) só para não reexibir o aviso a
+ * cada visita; bump de `CONSENT_VERSION` reexibe quando o texto mudar.
  *
- * O usuário pode clicar em "Saiba mais" para abrir a tela de privacidade.
+ * O usuário pode clicar em "Saiba mais" para abrir a Política de Privacidade.
  */
 
 interface CookieConsentBannerProps {
@@ -22,8 +24,8 @@ interface CookieConsentBannerProps {
 }
 
 const CONSENT_KEY = "praxia-lgpd-consent";
-/** Versão do texto/política — bump aqui força reaceite. */
-const CONSENT_VERSION = "2026-05-28";
+/** Versão do texto/política — bump aqui reexibe o aviso (texto mudou). */
+const CONSENT_VERSION = "2026-05-30";
 
 interface ConsentRecord {
   version: string;

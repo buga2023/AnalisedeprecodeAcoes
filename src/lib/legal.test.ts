@@ -27,9 +27,10 @@ describe("legal — disclaimers", () => {
     expect(CVM_DISCLAIMER_SHORT).toMatch(/CVM 14/);
   });
 
-  it("LGPD_COOKIE_NOTICE menciona localStorage e consentimento", () => {
+  it("LGPD_COOKIE_NOTICE é aviso (localStorage/dispositivo) sem linguagem de consentimento", () => {
     expect(LGPD_COOKIE_NOTICE).toMatch(/localStorage/);
     expect(LGPD_COOKIE_NOTICE).toMatch(/dispositivo/);
+    expect(LGPD_COOKIE_NOTICE).not.toMatch(/você concorda/i);
   });
 });
 
