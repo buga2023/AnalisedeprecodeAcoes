@@ -20,6 +20,7 @@ import { StockFundamentalsTrend } from "../StockFundamentalsTrend";
 import { StockReportsSection } from "../StockReportsSection";
 import { AIBadge } from "../AIBadge";
 import { ScoreDimBar } from "../ScoreDimBar";
+import { FIIDetailStats } from "../FIIDetailStats";
 import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 
 interface ScreenStockDetailProps {
@@ -563,6 +564,9 @@ export function ScreenStockDetail({
         </div>
 
         {/* ── Valuation — Como calculamos ──────────────────────────── */}
+        {stock.assetType === "fii" ? (
+          <FIIDetailStats fii={stock} accent={accent} />
+        ) : (
         <PraxiaCard
           padding={16}
           style={{ marginTop: 16, border: `0.5px solid ${T.hairlineStrong}` }}
@@ -761,6 +765,7 @@ export function ScreenStockDetail({
             </button>
           )}
         </PraxiaCard>
+        )}
 
         <StockAIAnalysisSection stock={stock} profile={profile} accent={accent} />
 
