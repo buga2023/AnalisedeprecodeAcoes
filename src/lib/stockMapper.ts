@@ -1,7 +1,8 @@
 import type { Stock } from "@/types/stock";
 import type { BrapiQuoteResult } from "@/lib/api";
 import { calculateGrahamValue, calculateROIC, calculateStockScore } from "@/lib/calculators";
-import { detectMarket, detectSector, brandColor } from "@/lib/stockMeta";
+import { detectMarket, detectSector, brandColor, detectAssetType, detectFIISegment } from "@/lib/stockMeta";
+import { calculateFIIScore } from "@/lib/fiiScore";
 
 /**
  * Mapeia uma cotação crua do proxy (`/api/brapi`) para o modelo `Stock`,
@@ -45,15 +46,19 @@ export function mapQuoteToStock(
   const debtToEquity = quote.financialData?.debtToEquity ?? 0;
   const roic = calculateROIC(ebitda, totalDebt, debtToEquity);
 
-  const { total, breakdown } = calculateStockScore({
-    price,
-    grahamValue,
-    roe,
-    debtToEbitda,
-    dividendYield,
-    pl,
-    evEbitda,
-  });
+  const name = quote.shortName ?? quote.longName ?? quote.symbol;
+  const assetType = detectAssetType(quote.symbol, name);
+  const isFii = assetType === "fii";
+  const segment = isFii ? detectFIISegment(quote.symbol) : detectSector(quote.symbol);
+
+  const { total, breakdown } = isFii
+    ? calculateFIIScore({
+        dividendYield: dividendYield * 100, // Stock.dividendYield é fração; fiiScore espera %
+        pvp,
+        segment,
+        // vacância entra depois (FIIDetailStats, scraping lazy)
+      })
+    : calculateStockScore({ price, grahamValue, roe, debtToEbitda, dividendYield, pl, evEbitda });
 
   return {
     ticker: quote.symbol,
@@ -79,9 +84,10 @@ export function mapQuoteToStock(
     roic,
     grahamValue,
     marginOfSafety: grahamValue > 0 ? ((grahamValue - price) / grahamValue) * 100 : 0,
-    name: quote.shortName ?? quote.longName ?? quote.symbol,
+    name,
+    assetType,
     market: detectMarket(quote.symbol),
-    sector: detectSector(quote.symbol),
+    sector: segment,
     brandColor: brandColor(quote.symbol),
   };
 }
