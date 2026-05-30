@@ -79,7 +79,7 @@ export interface Relatorio {
   margem?: number;
 }
 
-export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'groq';
+export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'groq' | 'openrouter';
 
 export interface AIProviderConfig {
   provider: AIProvider;

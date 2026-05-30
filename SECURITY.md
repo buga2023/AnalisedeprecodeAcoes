@@ -24,11 +24,19 @@ Todos os endpoints fazem logging restrito: `error.message.slice(0, 120)` ou simi
 
 ## Auth
 
-`LoginScreen.tsx:27` ainda valida `admin/1234` no client. Bloqueador absoluto pra produção/cobrança. Roadmap: migrar para `POST /api/auth` com bcrypt + rate-limit + integração Convex (decisão de stack feita em 2026-05-28).
+Autenticação real via **Supabase Auth**: login/cadastro por email+senha
+(`useAuth.signInWithPassword`/`signUpWithPassword`), reset de senha por email e
+magic-link como alternativa. Senhas são hasheadas server-side pelo Supabase
+(bcrypt + salt) — o app nunca armazena senha. Validação de força no client
+(`src/lib/passwordStrength.ts`: ≥8 + letra + número) como defesa-em-profundidade.
+O placeholder `admin/1234` foi **removido** (substituído em `f09fd45`).
+Pré-requisitos de painel (min length, leaked-password protection) no runbook abaixo.
 
 ## Persistência
 
-Tudo em `localStorage` (15+ chaves). Sem sync entre devices. Roadmap: Convex (reactive DB + functions + auth integrado).
+Persistência server-side em **Supabase Postgres** (RLS por owner) com
+write-through + sync on login; `localStorage` segue como cache local e fallback
+offline. (A decisão de stack acabou sendo Supabase, não Convex.)
 
 ## Dependências com CVE pendente
 
@@ -55,9 +63,10 @@ npm install --save xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
 ```
 Alternativa: configurar `npm config set cafile <path-to-corp-cert>` ou usar `@e965/xlsx` (fork community no npm padrão).
 
-## Login placeholder público
+## Login placeholder público — RESOLVIDO
 
-`admin/1234` em `LoginScreen.tsx`. Removível só quando o substituto (Convex auth) estiver pronto. Aceitável enquanto demo, **não para produção**.
+O placeholder `admin/1234` foi removido; a auth real é Supabase email+senha
+(ver seção Auth). Mantido aqui só como registro histórico do achado B5.
 
 ## Histórico de hardening desta sessão
 
@@ -74,3 +83,49 @@ Alternativa: configurar `npm config set cafile <path-to-corp-cert>` ou usar `@e9
 4. **Compliance BR** (LGPD + termo + disclaimer CVM) — bloqueador #4
 5. **Upgrade xlsx** em ambiente apropriado — risco residual baixo dadas as defesas
 6. **Sentry + Analytics** — visibilidade pós-launch
+
+## Auditoria de segurança 2026-05-29 (billing/auth)
+
+Revisão focada do branch `feat/billing-dormante` (webhook MP, RLS, segredos,
+injeção). **Nenhuma vulnerabilidade explorável acima de 80% de confiança.** O
+webhook MP é fail-closed (HMAC timing-safe, vínculo de propriedade por
+`external_reference`), `delete-account` é owner-scoped, e RLS é owner-only. Um
+achado acionável foi corrigido:
+
+- **`increment_usage` (SECURITY DEFINER) deixou de ser concedida a
+  `authenticated`** (`002_billing.sql`). Antes, exposta via PostgREST RPC,
+  permitia a qualquer usuário logado incrementar o contador de uso de OUTRO
+  (cross-tenant write → empurra a vítima além do limite free). O servidor chama
+  via `service_role` (ignora grants), então a restrição não quebra nada.
+
+Também adicionados nesta passagem:
+- **Validação de força de senha no client** (`src/lib/passwordStrength.ts`):
+  ≥8 + letra + número, aplicada em criar-conta e nova-senha (signin não trava por
+  composição). Defesa-em-profundidade — o Supabase Auth (bcrypt+salt) segue como
+  fonte de verdade.
+- **Sentry cabeado** (`src/lib/telemetry.ts` front + `api/_sentry.ts` back),
+  env-gated por `VITE_SENTRY_DSN` / `SENTRY_DSN`, no-op sem DSN. DSN nunca no
+  código. Captura nos 4 handlers críticos: checkout, mp-webhook, delete-account, ai.
+
+## Runbook de hardening (pré-produção)
+
+Checklist operacional — só o time/usuário executa (não é código). Em ordem de
+prioridade:
+
+1. **Segredos (maior risco).**
+   - Trocar credenciais Mercado Pago de PRODUÇÃO (`APP_USR-…`) por **TEST-…** até
+     a hora de cobrar de verdade. As atuais cobram no primeiro teste.
+   - Rotacionar qualquer chave que existiu em `.env` compartilhado (MP,
+     OpenRouter, Groq, Gemini, Supabase service-role) — tratar como exposta.
+   - Confirmar que `SUPABASE_SERVICE_ROLE_KEY` só vive no env do Vercel (server),
+     nunca prefixado `VITE_`.
+2. **Painel Supabase (auth).**
+   - Authentication → Settings → **Minimum password length = 8** (alinha com o client).
+   - Ligar **Leaked password protection** (checa HaveIBeenPwned).
+   - Confirmar estado de **"Confirm email"** conforme a decisão de produto.
+3. **Migrations.** Aplicar **002 (com o fix de RLS) + 003 + 004** no Supabase
+   Dashboard antes de ligar billing.
+4. **Webhook MP.** Registrar `…/api/mp-webhook` no painel MP e salvar
+   `MERCADO_PAGO_WEBHOOK_SECRET` (sem ele o webhook responde 503 — fail-closed).
+5. **Sentry.** Adicionar `VITE_SENTRY_DSN` (front) + `SENTRY_DSN` (back) nas envs
+   do Vercel quando quiser visibilidade de erro em produção.

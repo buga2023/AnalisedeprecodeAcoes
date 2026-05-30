@@ -8,6 +8,7 @@ import { SectionHeader } from "../SectionHeader";
 import { PraMark } from "../PraMark";
 import { CompareTable } from "../CompareTable";
 import { CVMDisclaimerFooter } from "../CVMDisclaimerFooter";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import type { InvestorProfile, Stock } from "@/types/stock";
 import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators";
 import {
@@ -164,6 +165,8 @@ export function ScreenCompare({
             {selected.length}/{MAX_COMPARE}
           </div>
         </div>
+
+        <FeatureHintBanner hintKey="compare" accent={accent} />
 
         {selected.length === 0 && (
           <PraxiaCard padding={20}>

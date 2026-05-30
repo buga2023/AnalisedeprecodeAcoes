@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PraxiaTokens, fmt } from "./tokens";
 import { PraxiaCard } from "./PraxiaCard";
 import { Icon } from "./Icon";
@@ -120,9 +121,28 @@ export function PortfolioScoreHero({
       </div>
 
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-        <ScoreBar label="Qualidade dos ativos" value={score.base * 0.7} max={70} color={accent} />
-        <ScoreBar label="Diversificação" value={score.diversification} max={30} color={T.up} />
-        <ScoreBar label="Penalidade concentração" value={score.overweightPenalty} max={30} color={T.down} inverse />
+        <ScoreBar
+          label="Qualidade dos ativos"
+          value={score.base * 0.7}
+          max={70}
+          color={accent}
+          tip="Média ponderada dos scores individuais (0–100 de cada ação) pelo valor que você tem nela. Vale 70% do score final."
+        />
+        <ScoreBar
+          label="Diversificação"
+          value={score.diversification}
+          max={30}
+          color={T.up}
+          tip="Bônus de até 30 pts por espalhar entre setores. Calculado por (1 − HHI) × 30, onde HHI é a soma dos quadrados das fatias setoriais."
+        />
+        <ScoreBar
+          label="Penalidade concentração"
+          value={score.overweightPenalty}
+          max={30}
+          color={T.down}
+          inverse
+          tip="Desconta pontos quando um setor passa de 40% da carteira. Cada ponto percentual acima de 40 tira 0,3 do score."
+        />
       </div>
     </PraxiaCard>
   );
@@ -183,19 +203,45 @@ function ScoreBar({
   max,
   color,
   inverse = false,
+  tip,
 }: {
   label: string;
   value: number;
   max: number;
   color: string;
   inverse?: boolean;
+  tip?: string;
 }) {
   const T = PraxiaTokens;
+  const [open, setOpen] = useState(false);
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-        <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.ink70 }}>{label}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: T.body, fontSize: 11.5, color: T.ink70 }}>
+          {label}
+          {tip && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-label={`Sobre ${label}`}
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 7,
+                border: "none",
+                background: "transparent",
+                color: open ? color : T.ink30,
+                cursor: "pointer",
+                padding: 0,
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Icon.info size={12} color={open ? color : T.ink30} />
+            </button>
+          )}
+        </span>
         <span style={{ fontFamily: T.mono, fontSize: 10.5, color: inverse ? T.down : T.ink50 }}>
           {inverse ? "-" : "+"}
           {value.toFixed(1)}
@@ -211,6 +257,23 @@ function ScoreBar({
           }}
         />
       </div>
+      {tip && open && (
+        <div
+          style={{
+            marginTop: 6,
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.04)",
+            border: `0.5px solid ${T.hairline}`,
+            fontFamily: T.body,
+            fontSize: 11,
+            color: T.ink70,
+            lineHeight: 1.5,
+          }}
+        >
+          {tip}
+        </div>
+      )}
     </div>
   );
 }

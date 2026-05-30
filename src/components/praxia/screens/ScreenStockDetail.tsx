@@ -19,6 +19,7 @@ import { StockNewsSection } from "../StockNewsSection";
 import { StockFundamentalsTrend } from "../StockFundamentalsTrend";
 import { StockReportsSection } from "../StockReportsSection";
 import { AIBadge } from "../AIBadge";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 
 interface ScreenStockDetailProps {
   stock: Stock;
@@ -195,6 +196,8 @@ export function ScreenStockDetail({
             </GlassButton>
           </div>
         </div>
+
+        <FeatureHintBanner hintKey="stock" accent={accent} />
 
         <div
           style={{
@@ -811,7 +814,7 @@ export function ScreenStockDetail({
             cursor: isOwned ? "pointer" : "not-allowed",
           }}
         >
-          Vender
+          Simular venda
         </button>
         <button
           onClick={() => onBuy(stock)}
@@ -829,7 +832,7 @@ export function ScreenStockDetail({
             boxShadow: `0 12px 30px ${accent}55`,
           }}
         >
-          Comprar
+          Simular compra
         </button>
       </div>
     </div>

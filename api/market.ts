@@ -3,7 +3,7 @@ import { applyCors } from './_cors';
 import { checkRateLimit } from './_ratelimit';
 
 // Cache em memória por instância da função
-let cachedData: any = null;
+let cachedData: Record<string, unknown> | null = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 60000;
 
@@ -28,7 +28,7 @@ export default async function handler(
       const symbols = ["USDBRL=X", "EURBRL=X", "BTC-BRL", "ETH-BRL"];
       const results = await Promise.all(symbols.map(s => fetchYahooMarket(s)));
       
-      const mappedData: any = {};
+      const mappedData: Record<string, unknown> = {};
       results.forEach(r => {
         if (r) mappedData[r.key] = r.data;
       });

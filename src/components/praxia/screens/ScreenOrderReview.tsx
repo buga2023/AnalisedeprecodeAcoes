@@ -104,7 +104,7 @@ export function ScreenOrderReview({
               lineHeight: 1.05,
             }}
           >
-            Revisar {draft.type === "buy" ? "compra" : "venda"}
+            Revisar {draft.type === "buy" ? "compra" : "venda"} simulada
           </div>
           <div
             style={{
@@ -114,7 +114,39 @@ export function ScreenOrderReview({
               color: T.ink70,
             }}
           >
-            Confirme os detalhes antes de registrar a ordem.
+            Operação fictícia — ao confirmar, só a sua carteira aqui no app é atualizada.
+            Nenhuma ordem real é enviada a corretora.
+          </div>
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              borderRadius: 10,
+              background: `${T.warn}12`,
+              border: `0.5px solid ${T.warn}40`,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 9,
+                letterSpacing: 0.6,
+                color: T.bgDeep,
+                background: T.warn,
+                padding: "2px 6px",
+                borderRadius: 4,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              SIMULAÇÃO
+            </span>
+            <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.ink70, lineHeight: 1.4 }}>
+              Treino sem dinheiro real. O Praxia é uma ferramenta de análise, não uma corretora.
+            </span>
           </div>
         </div>
 
@@ -245,7 +277,7 @@ export function ScreenOrderReview({
             letterSpacing: -0.1,
           }}
         >
-          Confirmar {draft.type === "buy" ? "compra" : "venda"}
+          Confirmar simulação
         </button>
       </div>
     </div>

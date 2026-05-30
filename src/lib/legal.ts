@@ -29,7 +29,7 @@ export const LGPD_COOKIE_NOTICE =
  * ─────────────────────────────────────────────────────────────────────── */
 
 export const PRIVACY_POLICY = {
-  vigorEm: "2026-05-28",
+  vigorEm: "2026-05-30",
   titulo: "Política de Privacidade",
   intro:
     "O Praxia é um aplicativo de análise fundamentalista de ações brasileiras. " +
@@ -65,24 +65,35 @@ export const PRIVACY_POLICY = {
       ],
     },
     {
-      titulo: "4. Seus direitos (LGPD, Lei 13.709/2018)",
+      titulo: "4. Base legal de cada tratamento",
+      conteudo: [
+        "Todo uso de dado tem uma base legal da LGPD (Art. 7 e 11):",
+        "• E-mail e autenticação — execução de contrato (Art. 7, V): sem isso não há como criar nem proteger a sua conta.",
+        "• Carteira, transações simuladas e preferências de interface — execução de contrato (Art. 7, V): são o próprio serviço que você pediu ao usar o app.",
+        "• Perfil de investidor (quiz de risco/horizonte/interesses) — consentimento (Art. 7, I): você escolhe responder e pode usar o app sem isso.",
+        "• Endereço IP nos logs do servidor (Vercel) — legítimo interesse (Art. 7, IX): segurança e operação do serviço.",
+        "• Envio do contexto da sua carteira aos provedores de IA — execução de contrato (Art. 7, V): necessário para gerar a análise que você solicitou. Como esses provedores (Groq/OpenAI/Anthropic/Google) ficam nos EUA, há transferência internacional (Art. 33): enviamos dados sem nome, e-mail ou documento e apenas o necessário para a resposta.",
+      ],
+    },
+    {
+      titulo: "5. Seus direitos (LGPD, Lei 13.709/2018)",
       conteudo: [
         "Você pode, a qualquer momento:",
-        "• Acessar — dados locais ficam no localStorage do navegador (abra DevTools); dados no servidor são listados sob pedido para o DPO.",
+        "• Acessar e levar seus dados — baixe tudo em formato JSON em \"Meu Perfil → Exportar meus dados\"; os dados locais também ficam no localStorage do navegador (abra DevTools).",
         "• Corrigir ou atualizar via interface do app.",
         "• Excluir tudo em \"Meu Perfil → Excluir minhas informações\" — apaga o localStorage do dispositivo, todas as linhas no Supabase vinculadas ao seu user_id e a conta de login.",
-        "• Pedir portabilidade — exportar via \"Exportar resultados\" na tela de Análise em lote.",
+        "• Pedir portabilidade — exportar seus dados em JSON em \"Meu Perfil → Exportar meus dados\".",
         "Para qualquer dúvida sobre seus dados, escreva para o responsável pelo tratamento (DPO) abaixo.",
       ],
     },
     {
-      titulo: "5. Controlador e contato (DPO)",
+      titulo: "6. Controlador e contato (DPO)",
       conteudo: [
         "Praxia é mantido por Gustavo Santos. Contato: gustavo.santos@gpce.com.br.",
       ],
     },
     {
-      titulo: "6. Mudanças futuras nesta política",
+      titulo: "7. Mudanças futuras nesta política",
       conteudo: [
         "Quando o Praxia introduzir cobrança (próximas versões), esta política será atualizada com: gateway de pagamento (Mercado Pago) e e-mail transacional como processadores adicionais, bases legais ampliadas e prazo de retenção. Você será avisado dentro do app antes da mudança entrar em vigor.",
       ],

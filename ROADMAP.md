@@ -24,6 +24,8 @@ Documento vivo com as **10 features planejadas** + 2 bônus rápidos. Para cada 
 | **2 — IA aplicada** | #1 Dividendos, #3 Rebalanceador, #4 Screener, #6 Notícias+sentimento, #9 Digest semanal | 3–5 dias total |
 | **3 — Pesadas** | #7 IR, #8 FIIs, #10 Histórico de fundamentos | 1+ semana cada |
 
+> **Status (2026-05-29):** ✅ entregues — #1, #2, #3 (Rebalanceador), #4 (Screener), #5, #6, #9, #10, Bônus A, Bônus B. ⏳ pendentes — #7 (IR), #8 (FIIs).
+
 ---
 
 ## Feature 1 — Calendário de dividendos

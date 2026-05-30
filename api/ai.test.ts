@@ -54,7 +54,7 @@ describe("api/ai handler", () => {
   });
 
   it("responde 400 quando messages está ausente", async () => {
-    vi.stubEnv("GROQ_API_KEY", "k");
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
     const handler = await loadHandler();
     const req = reqWithUniqueIp({ method: "POST", body: {} });
     const res = makeRes();
@@ -80,6 +80,80 @@ describe("api/ai handler", () => {
     await handler(req, res);
     expect(res.mock.statusCode).toBe(200);
     expect((res.mock.body as { provider: string }).provider).toBe("groq");
+  });
+
+  it("openrouter: é o provider default e encaminha quando chave presente", async () => {
+    // Sem AI_PROVIDER setado → default resolve para openrouter.
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
+      )
+    );
+    const handler = await loadHandler();
+    const req = reqWithUniqueIp({
+      method: "POST",
+      body: { messages: [{ role: "user", content: "x" }] },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.mock.statusCode).toBe(200);
+    expect((res.mock.body as { provider: string }).provider).toBe("openrouter");
+  });
+
+  it("balanceia em 429: 1º provider da rodada estoura → cai pro próximo", async () => {
+    // Groq + OpenRouter com chave → pool [groq, openrouter]. Rodada começa no
+    // groq; groq devolve 429 (quota) → fallback para openrouter (200).
+    vi.stubEnv("GROQ_API_KEY", "k");
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.includes("api.groq.com")) {
+          return new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { content: "via openrouter" } }] }), { status: 200 });
+      })
+    );
+    const handler = await loadHandler();
+    const req = reqWithUniqueIp({ method: "POST", body: { messages: [{ role: "user", content: "x" }] } });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.mock.statusCode).toBe(200);
+    expect((res.mock.body as { provider: string }).provider).toBe("openrouter");
+    expect((res.mock.body as { content: string }).content).toBe("via openrouter");
+  });
+
+  it("round-robin: chamadas consecutivas vão a providers diferentes", async () => {
+    vi.stubEnv("GROQ_API_KEY", "k");
+    vi.stubEnv("GEMINI_API_KEY", "k");
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.includes("generativelanguage.googleapis.com")) {
+          return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "g" }] } }] }), { status: 200 });
+        }
+        // groq e openrouter são OpenAI-compatible.
+        return new Response(JSON.stringify({ choices: [{ message: { content: "c" } }] }), { status: 200 });
+      })
+    );
+    const handler = await loadHandler();
+    // Mensagens distintas pra não bater no cache (queremos 2 chamadas reais).
+    const r1 = reqWithUniqueIp({ method: "POST", body: { messages: [{ role: "user", content: "um" }] } });
+    const res1 = makeRes();
+    await handler(r1, res1);
+    const r2 = reqWithUniqueIp({ method: "POST", body: { messages: [{ role: "user", content: "dois" }] } });
+    const res2 = makeRes();
+    await handler(r2, res2);
+    const p1 = (res1.mock.body as { provider: string }).provider;
+    const p2 = (res2.mock.body as { provider: string }).provider;
+    expect(p1).toBe("groq");      // rodada 1 começa no groq
+    expect(p2).toBe("gemini");    // rodada 2 avança pro gemini
+    expect(p1).not.toBe(p2);
   });
 
   it("retorna 401 quando upstream responde com 401", async () => {

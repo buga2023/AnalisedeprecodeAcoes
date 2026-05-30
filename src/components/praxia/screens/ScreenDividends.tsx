@@ -4,6 +4,7 @@ import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { GlassButton } from "../GlassButton";
 import { Icon } from "../Icon";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import { useDividendCalendar } from "@/hooks/useDividendCalendar";
 import type { Stock } from "@/types/stock";
 
@@ -112,6 +113,8 @@ export function ScreenDividends({
             <Icon.refresh size={16} color={T.ink70} />
           </GlassButton>
         </div>
+
+        <FeatureHintBanner hintKey="dividends" accent={accent} />
 
         {/* Empty state: sem ações na carteira */}
         {eligibleStocks.length === 0 && (

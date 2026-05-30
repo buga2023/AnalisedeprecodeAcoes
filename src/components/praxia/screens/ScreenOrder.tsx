@@ -83,9 +83,41 @@ export function ScreenOrder({
               color: T.ink70,
             }}
           >
-            {type === "buy" ? "Nova compra" : "Nova venda"}
+            {type === "buy" ? "Simular compra" : "Simular venda"}
           </div>
           <div style={{ width: 38 }} />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: `${T.warn}12`,
+            border: `0.5px solid ${T.warn}40`,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: T.mono,
+              fontSize: 9,
+              letterSpacing: 0.6,
+              color: T.bgDeep,
+              background: T.warn,
+              padding: "2px 6px",
+              borderRadius: 4,
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            SIMULAÇÃO
+          </span>
+          <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.ink70, lineHeight: 1.4 }}>
+            Operação fictícia para treino. Não envolve dinheiro real nem corretora — só
+            atualiza a sua carteira aqui no app.
+          </span>
         </div>
 
         <div
@@ -289,7 +321,7 @@ export function ScreenOrder({
             letterSpacing: -0.1,
           }}
         >
-          Revisar {type === "buy" ? "compra" : "venda"} · {fmt.brl(total)}
+          Revisar simulação · {fmt.brl(total)}
         </button>
       </div>
     </div>

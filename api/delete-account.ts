@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { applyCors } from "./_cors";
 import { checkRateLimit } from "./_ratelimit";
+import { captureApiError } from "./_sentry";
 
 /**
  * Endpoint LGPD Art. 18 — Exclusao definitiva da conta do usuario.
@@ -74,12 +75,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
   try {
     // Delete em paralelo das tabelas — RLS nao se aplica com service role.
     // O schema tem ON DELETE CASCADE em auth.users, mas executar explicitamente
-    // garante consistencia caso o cascade falhe ou o schema mude.
-    const [portfolioRes, txRes, prefsRes, profileRes] = await Promise.all([
+    // garante consistencia caso o cascade falhe ou o schema mude. Inclui
+    // subscriptions e usage_log (billing) para exclusao atomica (LGPD Art. 18 VI).
+    const [portfolioRes, txRes, prefsRes, profileRes, subsRes, usageRes] = await Promise.all([
       admin.from("portfolio_stocks").delete().eq("user_id", userId),
       admin.from("transactions").delete().eq("user_id", userId),
       admin.from("preferences").delete().eq("user_id", userId),
       admin.from("profiles").delete().eq("user_id", userId),
+      admin.from("subscriptions").delete().eq("user_id", userId),
+      admin.from("usage_log").delete().eq("user_id", userId),
     ]);
 
     const failed: string[] = [];
@@ -87,6 +91,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     if (txRes.error) failed.push("transactions");
     if (prefsRes.error) failed.push("preferences");
     if (profileRes.error) failed.push("profiles");
+    if (subsRes.error) failed.push("subscriptions");
+    if (usageRes.error) failed.push("usage_log");
 
     if (failed.length > 0) {
       console.error("[api/delete-account] delete falhou:", { userId, failed: failed.join(",") });
@@ -114,6 +120,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     console.info("[api/delete-account] sucesso:", { userId });
     return response.status(200).json({ ok: true, userDeleted: true });
   } catch (error) {
+    captureApiError(error, "delete-account");
     const msg = error instanceof Error ? error.message : "";
     console.error("[api/delete-account] erro fatal:", msg.slice(0, 120));
     return response.status(500).json({ error: "internal-error" });

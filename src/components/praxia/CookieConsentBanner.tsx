@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PraxiaTokens } from "./tokens";
 import { Icon } from "./Icon";
 import { LGPD_COOKIE_NOTICE } from "@/lib/legal";
+import { readConsent, writeConsent, type ConsentDecision } from "@/lib/consent";
 
 /**
  * Banner de consentimento LGPD — primeira visita.
@@ -21,39 +22,6 @@ interface CookieConsentBannerProps {
   onOpenPrivacy?: () => void;
 }
 
-const CONSENT_KEY = "praxia-lgpd-consent";
-/** Versão do texto/política — bump aqui força reaceite. */
-const CONSENT_VERSION = "2026-05-28";
-
-interface ConsentRecord {
-  version: string;
-  acceptedAt: string;
-}
-
-function readConsent(): ConsentRecord | null {
-  try {
-    const raw = localStorage.getItem(CONSENT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as ConsentRecord;
-    return parsed?.version === CONSENT_VERSION ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeConsent(): void {
-  const rec: ConsentRecord = {
-    version: CONSENT_VERSION,
-    acceptedAt: new Date().toISOString(),
-  };
-  try {
-    localStorage.setItem(CONSENT_KEY, JSON.stringify(rec));
-  } catch {
-    // Falha silenciosa (modo privado, quota cheia). UI continua, banner reaparece
-    // na próxima visita — perda menor que crashar a primeira sessão.
-  }
-}
-
 export function CookieConsentBanner({ accent, onOpenPrivacy }: CookieConsentBannerProps) {
   const T = PraxiaTokens;
   const accentColor = accent || T.accent;
@@ -63,8 +31,8 @@ export function CookieConsentBanner({ accent, onOpenPrivacy }: CookieConsentBann
 
   if (!needsConsent) return null;
 
-  function handleAccept() {
-    writeConsent();
+  function decide(decision: ConsentDecision) {
+    writeConsent(decision);
     setNeedsConsent(false);
   }
 
@@ -134,7 +102,23 @@ export function CookieConsentBanner({ accent, onOpenPrivacy }: CookieConsentBann
             }}
           >
             <button
-              onClick={handleAccept}
+              onClick={() => decide("refused")}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 999,
+                background: "transparent",
+                color: T.ink70,
+                border: `0.5px solid ${T.hairlineStrong}`,
+                fontFamily: T.body,
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Recusar
+            </button>
+            <button
+              onClick={() => decide("accepted")}
               style={{
                 flex: 1,
                 padding: "9px 14px",
@@ -151,24 +135,27 @@ export function CookieConsentBanner({ accent, onOpenPrivacy }: CookieConsentBann
             >
               Entendi
             </button>
-            {onOpenPrivacy && (
-              <button
-                onClick={onOpenPrivacy}
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 999,
-                  background: "transparent",
-                  color: T.ink70,
-                  border: `0.5px solid ${T.hairlineStrong}`,
-                  fontFamily: T.body,
-                  fontSize: 12.5,
-                  cursor: "pointer",
-                }}
-              >
-                Saiba mais
-              </button>
-            )}
           </div>
+          {onOpenPrivacy && (
+            <button
+              onClick={onOpenPrivacy}
+              style={{
+                marginTop: 8,
+                width: "100%",
+                padding: "6px 0",
+                background: "transparent",
+                color: T.ink50,
+                border: "none",
+                fontFamily: T.body,
+                fontSize: 11.5,
+                cursor: "pointer",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
+            >
+              Saiba mais
+            </button>
+          )}
         </div>
       </div>
     </div>

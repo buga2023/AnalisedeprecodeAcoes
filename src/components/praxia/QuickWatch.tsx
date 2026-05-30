@@ -185,7 +185,7 @@ export function QuickWatch({
               cursor: owned ? "pointer" : "not-allowed",
             }}
           >
-            Vender
+            Simular venda
           </button>
           <button
             onClick={onBuy}
@@ -203,7 +203,7 @@ export function QuickWatch({
               boxShadow: `0 12px 30px ${accent}55`,
             }}
           >
-            Comprar
+            Simular compra
           </button>
         </div>
 

@@ -1,8 +1,14 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-28 (quarta passagem, pós-commit).
-> Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`** (9 commits desta sessão, working tree limpo).
-> Pendentes: Fases 4 (Screener), 5 (Rebalanceador), 8 (FIIs), 9 (IR).
+> Documento vivo. Última atualização: 2026-05-29 (validação consolidada + push do branch `feat/billing-dormante` pro GitHub — ver seção 13).
+> Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
+> Pendentes: Fases 8 (FIIs), 9 (IR).
+>
+> **Sessão 2026-05-29 (4 agentes paralelos em git worktrees, integrados via merge validado):**
+> - Fase 4 (Screener) e Fase 5 (Rebalanceador) implementadas e mergeadas (zero conflito, build/tsc/lint = baseline).
+> - Cobertura de testes ampliada: 517 → **586 testes** (sync Supabase, useAuth, hooks de estado a 97–100%; +2 e2e LGPD/add-ticker). Cobertura global 73,7% → ~77,5%.
+> - Auditoria LGPD concluída (`docs/lgpd-auditoria.md`): 0 crítico, 3 Alto (portabilidade declarada-mas-ausente, base legal não declarada, consentimento sem recusa). Implementação das correções **pendente de decisão**.
+> - Pendência de infra: e2e não rodam localmente (chromium bloqueado por proxy) — `npx playwright install chromium` para validar.
 
 ---
 
@@ -40,7 +46,7 @@ Referência viva do design: `.praxia-design/` (não vai para o bundle).
 | Styling | Tailwind v4 (utilities) + inline com `PraxiaTokens` |
 | Serverless | Vercel Functions (`api/*.ts`) + `vite-api-plugin.ts` em dev |
 | Persistência | `localStorage` (15 chaves) — sem backend |
-| IA | `/api/ai` multi-provider: Groq (default) / OpenAI / Anthropic / Gemini |
+| IA | `/api/ai` multi-provider: OpenRouter (default) / Groq / OpenAI / Anthropic / Gemini |
 | Fontes | Cormorant, Playfair, EB Garamond, Manrope, JetBrains Mono |
 
 **Build atual** (2026-05-28, pós Fases 3+6+7): `npm run build` OK, **343 KB** index (+22 KB pelas 3 fases) + ~459 KB (xlsx chunk) + chunks por feature (OptimizeDividendsModal 8.7 KB, ScreenStockDetail 45 KB com hist. fundamentos), 0 erros TS, 0 erros lint novos.
@@ -346,3 +352,149 @@ Tudo entregue. Stack: **Supabase** (auth magic-link + Postgres com RLS) + **Merc
 - `npx tsc --noEmit --project tsconfig.app.json`: ✅ 0 erros
 - `npm run build`: ✅ ~17–25s
 - Warning de chunk index >500KB (569KB) — supabase-js adicionou ~50KB. Otimização (manualChunks) é polish, não bloqueia MVP.
+
+---
+
+## 11. Sessão 2026-05-29 (tarde) — OpenRouter default + Billing 1.6 implementado
+
+### 11.1 Migração de provider IA: Groq → OpenRouter (default)
+
+`api/_llm.ts` ganhou o provider `openrouter` (OpenAI-compatible, `https://openrouter.ai/api/v1`).
+`defaultProvider()` agora resolve `AI_PROVIDER` → **`openrouter`**. Modelo via `OPENROUTER_MODEL`
+(default `meta-llama/llama-3.3-70b-instruct:free`). `AIProvider` (types) e `.env.example` atualizados.
+Fix no `.env` local: a chave estava em `GROQ_API_KEY` mas era OpenRouter (`sk-or-v1-…`) → renomeada
+para `OPENROUTER_API_KEY` (sem isso a IA caía em 503). Testes: novo caso em `api/ai.test.ts`.
+
+### 11.2 Billing 1.6 — Mercado Pago Subscriptions (implementado, **dormente por flag**)
+
+Seguiu o `BILLING_PLAN.md` + spec aprovado (`docs/superpowers/specs/2026-05-29-deploy-e-billing-design.md`).
+Gate controlado por `BILLING_ENABLED` (server) / `VITE_BILLING_ENABLED` (client). **Default off** =
+app grátis e ilimitado; nenhum paywall aparece. Modelo: Pro R$ 29/mês, free = 10 chamadas IA/mês.
+
+**Novos arquivos:**
+- `src/lib/billing.ts` (puro: `PRO_PRICE_BRL`, `FREE_MONTHLY_LIMIT`, `PAYWALLED_FEATURES`, `hasProAccess`, `currentMonthKey`, `featureLabels`) + teste.
+- `src/lib/supabaseBilling.ts` (`fetchSubscriptionFromServer`, `fetchUsageThisMonth`).
+- `src/lib/aiAuth.ts` (token a nível de módulo via `setAIAccessToken`; `aiAuthHeaders`; `PaywallRequiredError`; `throwIfPaywalled`; handler global `setPaywallHandler`) + teste.
+- `src/lib/checkoutClient.ts` (`startProCheckout` → `/api/checkout` → redirect `init_point`).
+- `src/hooks/useSubscription.ts` (`{plan, subscription, usageThisMonth, isPro, refresh}`, hidrata ao login).
+- `api/_mercadopago.ts` (`mpFetch`, `verifyWebhookSignature` HMAC-SHA256, `mpStatusToSubscriptionStatus`) + teste.
+- `api/_usageGuard.ts` (`assertCanUseAI` + `trackUsage`; flag off → bypass) + teste.
+- `api/checkout.ts` (cria Preapproval, salva subscription pending, devolve init_point).
+- `api/mp-webhook.ts` (valida assinatura, re-busca preapproval, atualiza `subscriptions` + espelha `profiles.plan`, idempotente).
+- `src/components/praxia/PaywallModal.tsx` (sibling de AppShell, dispara no 402).
+- `src/components/praxia/screens/ScreenBilling.tsx` (gerenciar plano, via Profile quando billing ligado).
+
+**Modificados:** `api/ai.ts` (gate antes do LLM + `trackUsage` após sucesso); as 6 libs que chamam
+`/api/ai` (`ai.ts`, `aiDividends.ts`, `aiDigest.ts`, `stockNews.ts`, `aiNews.ts`, `aiNewsFeed.ts`) →
+enviam `Authorization` + `feature` e tratam 402; `src/App.tsx` (lift `useSubscription`, registra
+`setAIAccessToken`/`setPaywallHandler`, rota `billing`, `PaywallModal` sibling); `ScreenProfile.tsx`
+(card "Plano" + botão, só com billing ligado); `.env.example`.
+
+**Validação:** `tsc -b` ✅, `npm run test:run` → **612/612** (67 files), `npm run build` ✅ ~4,5s, lint dos novos = limpo.
+
+### 11.3 Pendências / cuidados do billing (antes de ligar `BILLING_ENABLED=true`)
+
+- ⚠️ **Credenciais MP são de PRODUÇÃO** (`APP_USR-…` no `.env`), não TEST. Cobra de verdade no
+  primeiro teste — usar usuário de teste do painel MP ou credenciais `TEST-…` antes de ativar.
+- Rodar `002_billing.sql` no Supabase Dashboard antes de ligar.
+- Registrar webhook `…/api/mp-webhook` no painel MP + gerar/salvar `MERCADO_PAGO_WEBHOOK_SECRET`.
+- **View `current_month_usage`** (migration 002): **CORRIGIDO na seção 13** — recriada com
+  `security_invoker = on` (cada usuário só lê o próprio uso; RLS de `usage_log` passa a ser respeitada).
+  Era um vazamento cross-tenant de contadores de uso. Comentário enganoso removido.
+- `api/fundamentals-history.ts` não passa pelo gate (não é LLM) embora `"fundamentals-history"` exista
+  em `PAYWALLED_FEATURES` — só os endpoints `/api/ai` são gateados. Decisão consciente (dado, não IA).
+
+---
+
+## 12. Sessão 2026-05-29 — Auth por email + senha (substitui magic-link como principal)
+
+Spec aprovado: `docs/superpowers/specs/2026-05-29-login-email-senha-design.md`. Implementado via TDD.
+
+### 12.1 O que entrou
+
+Login/cadastro por **email + senha**, sem confirmação de email no cadastro. Magic-link mantido
+como alternativa e **reset de senha por email** adicionado. Senha mínima de 8 caracteres.
+
+| Arquivo | Mudança |
+|---|---|
+| `src/hooks/useAuth.ts` | **Novas ações** `signInWithPassword`, `signUpWithPassword` (retorna `{ok:true, needsConfirmation:true}` se a sessão vier nula — confirmação ainda ligada no painel), `resetPassword` (`resetPasswordForEmail` + `redirectTo: origin`), `updatePassword` (`updateUser`). **Novo estado** `passwordRecovery`, ligado no evento `PASSWORD_RECOVERY` e resetado após `updatePassword`. Magic-link e `signOut` preservados. Helper `normalizeEmail` (trim+lowercase) e guard `isSupabaseConfigured` em todas as ações. |
+| `src/components/LoginScreen.tsx` | Reescrito no mesmo visual editorial. Toggle **Entrar / Criar conta** (`mode`), campos email + senha (botão ver/ocultar), validação client (email regex + senha ≥ 8), link "Esqueci minha senha", botão "Entrar com link mágico". Steps: `input | sent | reset-sent | recovery`. Prop `recoveryMode` abre direto no step de nova senha. Prop morta `onLogin` removida. |
+| `src/App.tsx` | `useAuth` expõe `passwordRecovery`; quando true, renderiza `<LoginScreen recoveryMode />` antes do bloco `if (user)` (a sessão de recuperação já autentica). |
+| `src/lib/supabase.ts` | Só comentário de cabeçalho (config `pkce`/`detectSessionInUrl` inalterada — magic-link e link de reset dependem dela). |
+| `src/hooks/useAuth.test.ts` | **NOVO** — 9 testes mockando `@/lib/supabase` via `vi.hoisted` (signin/signup ok+erro, `needsConfirmation`, reset, recovery, evento `PASSWORD_RECOVERY`, guard sem config). |
+
+### 12.2 Passos manuais no painel Supabase (pré-requisito pra testar/ligar)
+
+1. **Authentication → Providers → Email → "Confirm email" = OFF** (login direto sem confirmar email).
+2. **Authentication → Settings → Minimum password length = 8** (alinha com a validação do client).
+
+### 12.3 Validação
+
+`npx tsc -b` ✅ 0 erros · `npm run test:run` → **621/621** (68 files; era 612) · `npm run build` ✅ ~4,4s
+(index 608 KB, warning de chunk >500KB pré-existente) · lint dos arquivos tocados limpo. Os 2 avisos
+`react-hooks/set-state-in-effect` remanescentes (`useAuth.ts:45`, `App.tsx:643`) são código
+pré-existente (guard de config e `setBootStep`), não introduzidos nesta feature.
+
+### 12.4 Mensagens humanizadas + tutoriais por feature
+
+Após a auth base, duas melhorias de UX (também via TDD):
+
+- **Erros de auth em PT-BR** — `src/lib/authErrors.ts` (`humanizeAuthError`) mapeia as mensagens
+  técnicas do Supabase ("Invalid login credentials", "User already registered", rate limit, rede…)
+  para texto claro na voz do app; mensagens desconhecidas são repassadas. Cabeado no `LoginScreen`
+  em todos os pontos que mostram erro. Teste: `src/lib/authErrors.test.ts` (9 casos).
+- **Banners de tutorial por tela** — `src/lib/tutorialHints.ts` (registro `TUTORIAL_HINTS` +
+  `isHintDismissed`/`dismissHint`/`resetTutorialHints`, persistido em `praxia-tutorial-hints`) e
+  `src/components/praxia/FeatureHintBanner.tsx` (banner dismissível "Como usar · …" com botão
+  Entendi/fechar; some 1 vez e não volta). Inserido no topo de 9 telas: Home, Mercado, Análise,
+  Detalhe da ação, Dividendos, Rebalanceador, Notícias, Comparar, Alertas. Teste:
+  `src/lib/tutorialHints.test.ts` (6 casos). **Nova chave de cache:** `praxia-tutorial-hints`.
+
+**Validação 12.4:** `tsc -b` ✅ · `npm run test:run` → **648/648** (71 files) ✅ · `npm run build` ✅ ·
+lint dos arquivos novos + 9 telas limpo.
+
+---
+
+## 13. Sessão 2026-05-29 (fim) — Validação consolidada + push GitHub + UX de simulação
+
+> Contexto: esta passagem rodou em paralelo a um agente que expandiu o escopo bem além de "billing"
+> (cache IA, semantic cache, auth email+senha, tutorial hints, mexidas em telas e no core). O trabalho
+> foi **validado em conjunto e empurrado pro GitHub** a pedido. Histórico ficou misturado por frente —
+> reorganizar em PRs separados é opcional e pode ser feito agora que está salvo no remoto.
+
+### 13.1 UX — fluxo de ordem explícito como SIMULAÇÃO (paper trading) — commit `d7da7aa`
+O Praxia é ferramenta de **análise**, não corretora; o fluxo de compra/venda dava a entender compra
+real (clareza + risco CVM). Mudanças:
+- `ScreenOrder` / `ScreenOrderReview`: header "Simular compra/venda", **banner amarelo "SIMULAÇÃO"**
+  ("operação fictícia para treino — sem dinheiro real nem corretora, só atualiza a carteira no app"),
+  botões "Revisar simulação" / "Confirmar simulação", subtítulos explícitos.
+- `ScreenStockDetail` + `QuickWatch`: botões de entrada → "Simular compra" / "Simular venda".
+- Os rótulos COMPRAR/SEGURAR/VENDER das análises **ficaram intactos** (é o veredito da análise — função do app).
+
+### 13.2 Correção do RLS (ver 11.3)
+`002_billing.sql`: view `current_month_usage` recriada com `security_invoker = on`; comentário enganoso
+("herda RLS por padrão") corrigido.
+
+### 13.3 Validação consolidada de toda a árvore
+- `npm run build` ✅ (index ~613 KB; warning de chunk >500KB pré-existente).
+- `npm run test:run` → **655/655** (72 files) ✅.
+- `npm run coverage` → global **72,07% linhas / 72,07% stmts / 88,57% funcs / 75,44% branches** (≥ 70%).
+- `npm run lint` → **baseline pré-existente** (13 erros `any` antigos + warnings `unused eslint-disable`
+  auto-fixáveis; sem regressão introduzida).
+
+**Lacunas de cobertura conhecidas (0% — testar quando a árvore estabilizar):** `useSubscription`,
+`checkoutClient`, `supabaseBilling` (billing client), `rebalance.ts` (Fase 5), `screener.ts` (~18%),
+`useWeeklyDigest`.
+
+### 13.4 Commit + push pro GitHub
+- Consolidado no commit **`db68467`** (53 arquivos): billing dormente + cache IA (`_aicache` durable +
+  `_semanticCache`, migrations 003/004 + `supabase/functions`) + migração OpenRouter + auth email+senha
+  + tutorial hints + UX de simulação + fix de RLS.
+- **Push:** branch **`feat/billing-dormante`** → `origin` (github.com/buga2023/AnalisedeprecodeAcoes).
+  PR: https://github.com/buga2023/AnalisedeprecodeAcoes/pull/new/feat/billing-dormante
+- **NÃO mergeado na `main`** — fica a critério abrir o PR. Branch trackeia `origin/feat/billing-dormante`.
+
+### 13.5 Pendente pra LIGAR a cobrança (recap dos bloqueadores externos)
+1. **Credenciais MP de TEST** antes de `BILLING_ENABLED=true` — as atuais são de produção (cobram de verdade).
+2. Rodar migrations **002 (com fix RLS) + 003 + 004** no Supabase Dashboard.
+3. Registrar webhook `…/api/mp-webhook` no painel MP + salvar `MERCADO_PAGO_WEBHOOK_SECRET`.

@@ -5,7 +5,7 @@ import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { Icon } from "../Icon";
 import { PraMark } from "../PraMark";
-import type { AIProvider, AIProviderConfig, InvestorProfile } from "@/types/stock";
+import type { AIProvider, AIProviderConfig, InvestorProfile, Plan } from "@/types/stock";
 import {
   riskLabel,
   horizonLabel,
@@ -33,9 +33,14 @@ interface ScreenProfileProps {
   onOpenBatchValuation?: () => void;
   onOpenActivity?: () => void;
   onOpenDividends?: () => void;
+  onOpenRebalance?: () => void;
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
   onOpenDeleteAccount?: () => void;
+  onOpenExportData?: () => void;
+  plan?: Plan;
+  /** Quando presente, mostra "Gerenciar plano" (billing ligado). */
+  onManagePlan?: () => void;
   onLogout: () => void;
   onClearLocalData: () => void;
 }
@@ -53,9 +58,13 @@ export function ScreenProfile({
   onOpenBatchValuation,
   onOpenActivity,
   onOpenDividends,
+  onOpenRebalance,
   onOpenPrivacy,
   onOpenTerms,
   onOpenDeleteAccount,
+  onOpenExportData,
+  plan = "free",
+  onManagePlan,
   onLogout,
   onClearLocalData,
 }: ScreenProfileProps) {
@@ -75,7 +84,7 @@ export function ScreenProfile({
     setAiStats(getStats());
     // Toast simples sem dep — alert nativo. Pode evoluir pra Sonner depois.
     if (removed > 0) {
-      // eslint-disable-next-line no-console
+       
       console.info(`[Praxia] cache ${kind} limpo: ${removed} entrada(s).`);
     }
   };
@@ -308,11 +317,28 @@ export function ScreenProfile({
           )}
         </PraxiaCard>
 
+        {/* Plano (billing) — só aparece quando billing está ligado */}
+        {onManagePlan && (
+          <PraxiaCard padding={16}>
+            <SettingLabel label="Plano" sub={plan === "pro" ? "Praxia Pro ativo" : "Free · 10 consultas IA/mês"} />
+            <div style={{ marginTop: 12 }}>
+              <ToolButton accent={accent} onClick={onManagePlan} icon={<Icon.star size={14} color={accent} />}>
+                {plan === "pro" ? "Gerenciar assinatura" : "Assinar Praxia Pro"}
+              </ToolButton>
+            </div>
+          </PraxiaCard>
+        )}
+
         {/* Ferramentas */}
-        {(onOpenBatchValuation || onOpenActivity || onOpenDividends) && (
+        {(onOpenBatchValuation || onOpenActivity || onOpenDividends || onOpenRebalance) && (
           <PraxiaCard padding={16}>
             <SettingLabel label="Ferramentas" sub="Análises avançadas e importação" />
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {onOpenRebalance && (
+                <ToolButton accent={accent} onClick={onOpenRebalance} icon={<Icon.trend size={14} color={accent} />}>
+                  Rebalancear carteira
+                </ToolButton>
+              )}
               {onOpenDividends && (
                 <ToolButton accent={accent} onClick={onOpenDividends} icon={<Icon.invest size={14} color={accent} />}>
                   Calendário de dividendos
@@ -335,9 +361,9 @@ export function ScreenProfile({
         {/* Legal — LGPD + Termos de Uso + Excluir minhas informações.
             Estes acessos são obrigatórios pela LGPD (Art. 18) e por boa prática
             antes da Praxia introduzir conta paga / persistência server-side. */}
-        {(onOpenPrivacy || onOpenTerms || onOpenDeleteAccount) && (
+        {(onOpenPrivacy || onOpenTerms || onOpenExportData || onOpenDeleteAccount) && (
           <PraxiaCard padding={16}>
-            <SettingLabel label="Legal e privacidade" sub="LGPD · Termos · Excluir conta" />
+            <SettingLabel label="Legal e privacidade" sub="LGPD · Termos · Exportar · Excluir conta" />
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               {onOpenPrivacy && (
                 <ToolButton accent={accent} onClick={onOpenPrivacy} icon={<Icon.shield size={14} color={accent} />}>
@@ -347,6 +373,11 @@ export function ScreenProfile({
               {onOpenTerms && (
                 <ToolButton accent={accent} onClick={onOpenTerms} icon={<Icon.shield size={14} color={accent} />}>
                   Termos de uso
+                </ToolButton>
+              )}
+              {onOpenExportData && (
+                <ToolButton accent={accent} onClick={onOpenExportData} icon={<Icon.invest size={14} color={accent} />}>
+                  Exportar meus dados (LGPD)
                 </ToolButton>
               )}
               {onOpenDeleteAccount && (

@@ -4,6 +4,7 @@ import { PraxiaCard } from "../PraxiaCard";
 import { GlassButton } from "../GlassButton";
 import { Icon } from "../Icon";
 import { SectionHeader } from "../SectionHeader";
+import { FeatureHintBanner } from "@/components/praxia/FeatureHintBanner";
 import { alertTypeLabel, formatAlertTrigger } from "@/hooks/useAlerts";
 import type { PriceAlert } from "@/types/stock";
 
@@ -74,6 +75,8 @@ export function ScreenAlerts({
             Alertas
           </div>
         </div>
+
+        <FeatureHintBanner hintKey="alerts" accent={accent} />
 
         {permission !== "granted" && permission !== "unavailable" && (
           <PraxiaCard

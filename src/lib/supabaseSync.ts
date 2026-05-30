@@ -37,7 +37,7 @@ export async function fetchPortfolioFromServer(
     .select("ticker,name,sector,quantity,cost")
     .eq("user_id", userId);
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] fetchPortfolioFromServer:", error.message);
     return null;
   }
@@ -71,7 +71,7 @@ export async function upsertPortfolioStock(
     onConflict: "user_id,ticker",
   });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] upsertPortfolioStock:", error.message);
   }
 }
@@ -87,7 +87,7 @@ export async function deletePortfolioStock(
     .eq("user_id", userId)
     .eq("ticker", ticker);
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] deletePortfolioStock:", error.message);
   }
 }
@@ -110,7 +110,7 @@ export async function bulkUploadPortfolio(
     onConflict: "user_id,ticker",
   });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] bulkUploadPortfolio:", error.message);
   }
 }
@@ -153,7 +153,7 @@ export async function saveProfileToServer(
     onConflict: "user_id",
   });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] saveProfileToServer:", error.message);
   }
 }
@@ -170,7 +170,7 @@ export async function clearProfileFromServer(userId: string): Promise<void> {
     })
     .eq("user_id", userId);
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] clearProfileFromServer:", error.message);
   }
 }
@@ -191,7 +191,7 @@ export async function fetchTransactionsFromServer(
     .eq("user_id", userId)
     .order("occurred_at", { ascending: false });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] fetchTransactionsFromServer:", error.message);
     return null;
   }
@@ -224,7 +224,7 @@ export async function insertTransactionOnServer(
     occurred_at: tx.timestamp,
   });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] insertTransactionOnServer:", error.message);
   }
 }
@@ -248,7 +248,7 @@ export async function bulkUploadTransactions(
     .from("transactions")
     .upsert(rows, { onConflict: "id" });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] bulkUploadTransactions:", error.message);
   }
 }
@@ -257,7 +257,7 @@ export async function clearAllTransactionsOnServer(userId: string): Promise<void
   if (!isSupabaseConfigured) return;
   const { error } = await supabase.from("transactions").delete().eq("user_id", userId);
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] clearAllTransactionsOnServer:", error.message);
   }
 }
@@ -302,7 +302,7 @@ export async function savePreferencesToServer(
     onConflict: "user_id",
   });
   if (error) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[Praxia] savePreferencesToServer:", error.message);
   }
 }

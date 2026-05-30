@@ -1,17 +1,16 @@
 /**
- * Shim de telemetria — interface estável que vai virar Sentry quando a
- * conta estiver configurada. Até lá, despeja em `console.error` com tag.
+ * Telemetria de erro (front) — Sentry quando há DSN, no-op caso contrário.
  *
- * Substituição futura (1 commit):
- *   1. `npm install @sentry/react`
- *   2. Em `src/main.tsx`, antes do render:
- *        Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN, environment: import.meta.env.MODE });
- *   3. Trocar `captureError` daqui por `Sentry.captureException(err, { extra: ctx })`.
- *
- * Manter SEMPRE essa interface estável — `captureError(err, ctx)` —
- * para que os call sites (`usePraChat`, `useStockQuotes`, etc.) não
- * precisem mudar quando trocarmos o backend de erro.
+ * A interface (`initTelemetry`, `captureError`, `captureMessage`) é estável: os
+ * call sites (`usePraChat`, `useStockQuotes`, etc.) não mudam. Sem
+ * `VITE_SENTRY_DSN` setado, `initTelemetry` não inicializa nada e o dev local
+ * não envia evento algum — só o `console` continua. O DSN vem SEMPRE de env,
+ * nunca hardcoded.
  */
+
+import * as Sentry from "@sentry/react";
+
+let enabled = false;
 
 export interface ErrorContext {
   /** Identificador curto do site da chamada (ex.: "usePraChat", "fetchStockQuote"). */
@@ -20,24 +19,40 @@ export interface ErrorContext {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * Inicializa o Sentry se `VITE_SENTRY_DSN` existir. Chamado uma vez em
+ * `src/main.tsx` antes do render. Sem DSN → no-op.
+ */
+export function initTelemetry(): void {
+  const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+  if (!dsn) return;
+  Sentry.init({
+    dsn,
+    environment: import.meta.env.MODE,
+    // Só captura de erro por ora — sem performance tracing nem session replay.
+    tracesSampleRate: 0,
+  });
+  enabled = true;
+}
+
 export function captureError(err: unknown, ctx: ErrorContext): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[telemetry:${ctx.tag}] ${msg.slice(0, 200)}`, ctx.extra ?? "");
+  if (enabled) {
+    Sentry.captureException(err, { tags: { site: ctx.tag }, extra: ctx.extra });
+  }
 }
 
 /**
- * Para eventos não-erro que vão virar `Sentry.captureMessage` (warnings de UX,
- * estados degradados detectados, etc.). Hoje só loga.
+ * Para eventos não-erro (warnings de UX, estados degradados detectados, etc.).
  */
 export function captureMessage(message: string, ctx: ErrorContext): void {
   console.warn(`[telemetry:${ctx.tag}] ${message.slice(0, 200)}`, ctx.extra ?? "");
-}
-
-/**
- * Inicializador no-op — quando Sentry chegar, vai chamar `Sentry.init(...)`.
- * Call site: `src/main.tsx` antes do `createRoot(...).render(...)`.
- */
-export function initTelemetry(): void {
-  // Hoje no-op. Quando configurar Sentry, ler `import.meta.env.VITE_SENTRY_DSN`
-  // — se vazio, manter no-op pra que o dev local não pague nada.
+  if (enabled) {
+    Sentry.captureMessage(message, {
+      level: "warning",
+      tags: { site: ctx.tag },
+      extra: ctx.extra,
+    });
+  }
 }
