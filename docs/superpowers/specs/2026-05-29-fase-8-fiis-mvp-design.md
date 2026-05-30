@@ -12,6 +12,7 @@ Objetivo: detectar FIIs automaticamente, pontuá-los com fórmula própria, e mo
 
 1. **Segmento via mapa estático + só vacância via scraping.** Segmento é estável e mapeável por raiz de ticker (barato, síncrono); vacância é o único dado que exige scraping.
 2. **Score renormaliza quando a vacância falta** (scrape off/falhou): os pesos disponíveis escalam para /100 em vez de zerar a dimensão. Honesto, nunca inventa dado.
+3. **DY do FII vem de 3 fontes em cascata.** Descoberta durante o planejamento: o `api/brapi` lê DY de `defaultKeyStatistics`, que não tem o campo → DY chega ~0. Como DY é a métrica central do FII, resolvemos por cascata: **(a)** histórico de dividendos (soma dos últimos 12 meses ÷ preço), **(b)** Yahoo `summaryDetail` (módulo adicionado ao fetch), **(c)** scraping do `/api/fii-data` (junto da vacância). Pega a primeira fonte com valor > 0. Efeito colateral benéfico: adicionar `summaryDetail` passa a popular DY real para **ações** também (hoje a dimensão DY do score de ação é morta). Unidade canônica de `Stock.dividendYield` fica **fração** (o que UI e `calculateStockScore` já esperam); o código FII converte para % na borda.
 
 ## Arquitetura
 
