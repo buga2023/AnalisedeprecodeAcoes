@@ -46,6 +46,8 @@ const DISCOVERY_B3 = [
 
 const DISCOVERY_NASDAQ = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "NFLX"];
 
+const DISCOVERY_FII = ["HGLG11", "MXRF11", "KNRI11", "XPML11", "VISC11", "KNCR11", "BTLG11", "HGRU11"];
+
 interface ScreenMarketProps {
   stocks: Stock[];
   profile: InvestorProfile | null;
@@ -63,6 +65,7 @@ export function ScreenMarket({
 }: ScreenMarketProps) {
   const T = PraxiaTokens;
   const [tab, setTab] = useState<Tab>("trending");
+  const [assetFilter, setAssetFilter] = useState<"stock" | "fii">("stock");
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<Stock | null>(null);
@@ -75,35 +78,42 @@ export function ScreenMarket({
     setSearchSuggestions([]);
   }, [search]);
 
+  const scopedStocks = useMemo(
+    () => stocks.filter((s) => (assetFilter === "fii" ? s.assetType === "fii" : s.assetType !== "fii")),
+    [stocks, assetFilter]
+  );
+
   const list = useMemo(() => {
-    if (tab === "B3") return stocks.filter((s) => s.market === "B3");
-    if (tab === "NASDAQ") return stocks.filter((s) => s.market === "NASDAQ");
-    if (tab === "watchlist") return stocks.filter((s) => s.isFavorite);
+    if (tab === "B3") return scopedStocks.filter((s) => s.market === "B3");
+    if (tab === "NASDAQ") return scopedStocks.filter((s) => s.market === "NASDAQ");
+    if (tab === "watchlist") return scopedStocks.filter((s) => s.isFavorite);
     if (tab === "para-voce") {
       // ranking pelo score fundamentalista
-      return [...stocks].sort((a, b) => b.score - a.score);
+      return [...scopedStocks].sort((a, b) => b.score - a.score);
     }
     // trending: maiores |changePercent|
-    return [...stocks].sort(
+    return [...scopedStocks].sort(
       (a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)
     );
-  }, [stocks, tab]);
+  }, [scopedStocks, tab]);
 
   /** Tickers we suggest in this tab that the user does NOT already hold. */
   const discoveryTickers = useMemo(() => {
     const owned = new Set(stocks.map((s) => s.ticker.toUpperCase()));
     const base =
-      tab === "NASDAQ"
+      assetFilter === "fii"
+        ? DISCOVERY_FII
+        : tab === "NASDAQ"
         ? DISCOVERY_NASDAQ
         : tab === "B3" || tab === "trending" || tab === "para-voce"
         ? DISCOVERY_B3
         : [];
     return base.filter((t) => !owned.has(t)).slice(0, 8);
-  }, [stocks, tab]);
+  }, [stocks, tab, assetFilter]);
 
   const movers = useMemo(
-    () => [...stocks].sort((a, b) => b.changePercent - a.changePercent).slice(0, 5),
-    [stocks]
+    () => [...scopedStocks].sort((a, b) => b.changePercent - a.changePercent).slice(0, 5),
+    [scopedStocks]
   );
 
   const tryFetch = async (overrideTicker?: string) => {
@@ -385,6 +395,25 @@ export function ScreenMarket({
           </PraxiaCard>
         )}
 
+        {/* toggle Ações | FIIs */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {(["stock", "fii"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setAssetFilter(f)}
+              style={{
+                flex: 1, height: 32, borderRadius: 999,
+                background: assetFilter === f ? accent : "rgba(255,255,255,0.05)",
+                color: assetFilter === f ? "#fff" : T.ink70,
+                border: assetFilter === f ? "none" : `0.5px solid ${T.hairline}`,
+                fontFamily: T.body, fontWeight: 600, fontSize: 12.5, cursor: "pointer",
+              }}
+            >
+              {f === "stock" ? "Ações" : "FIIs"}
+            </button>
+          ))}
+        </div>
+
         {/* tabs */}
         <div
           style={{
@@ -516,6 +545,8 @@ export function ScreenMarket({
             >
               {tab === "watchlist"
                 ? "Sua watchlist está vazia. Toque na estrela em uma ação."
+                : assetFilter === "fii"
+                ? "Nenhum FII na carteira. Adicione um FII (ex: HGLG11) ou toque numa sugestão abaixo."
                 : "Nenhum ativo aqui ainda."}
             </div>
           </PraxiaCard>
