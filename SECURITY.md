@@ -74,3 +74,49 @@ Alternativa: configurar `npm config set cafile <path-to-corp-cert>` ou usar `@e9
 4. **Compliance BR** (LGPD + termo + disclaimer CVM) — bloqueador #4
 5. **Upgrade xlsx** em ambiente apropriado — risco residual baixo dadas as defesas
 6. **Sentry + Analytics** — visibilidade pós-launch
+
+## Auditoria de segurança 2026-05-29 (billing/auth)
+
+Revisão focada do branch `feat/billing-dormante` (webhook MP, RLS, segredos,
+injeção). **Nenhuma vulnerabilidade explorável acima de 80% de confiança.** O
+webhook MP é fail-closed (HMAC timing-safe, vínculo de propriedade por
+`external_reference`), `delete-account` é owner-scoped, e RLS é owner-only. Um
+achado acionável foi corrigido:
+
+- **`increment_usage` (SECURITY DEFINER) deixou de ser concedida a
+  `authenticated`** (`002_billing.sql`). Antes, exposta via PostgREST RPC,
+  permitia a qualquer usuário logado incrementar o contador de uso de OUTRO
+  (cross-tenant write → empurra a vítima além do limite free). O servidor chama
+  via `service_role` (ignora grants), então a restrição não quebra nada.
+
+Também adicionados nesta passagem:
+- **Validação de força de senha no client** (`src/lib/passwordStrength.ts`):
+  ≥8 + letra + número, aplicada em criar-conta e nova-senha (signin não trava por
+  composição). Defesa-em-profundidade — o Supabase Auth (bcrypt+salt) segue como
+  fonte de verdade.
+- **Sentry cabeado** (`src/lib/telemetry.ts` front + `api/_sentry.ts` back),
+  env-gated por `VITE_SENTRY_DSN` / `SENTRY_DSN`, no-op sem DSN. DSN nunca no
+  código. Captura nos 4 handlers críticos: checkout, mp-webhook, delete-account, ai.
+
+## Runbook de hardening (pré-produção)
+
+Checklist operacional — só o time/usuário executa (não é código). Em ordem de
+prioridade:
+
+1. **Segredos (maior risco).**
+   - Trocar credenciais Mercado Pago de PRODUÇÃO (`APP_USR-…`) por **TEST-…** até
+     a hora de cobrar de verdade. As atuais cobram no primeiro teste.
+   - Rotacionar qualquer chave que existiu em `.env` compartilhado (MP,
+     OpenRouter, Groq, Gemini, Supabase service-role) — tratar como exposta.
+   - Confirmar que `SUPABASE_SERVICE_ROLE_KEY` só vive no env do Vercel (server),
+     nunca prefixado `VITE_`.
+2. **Painel Supabase (auth).**
+   - Authentication → Settings → **Minimum password length = 8** (alinha com o client).
+   - Ligar **Leaked password protection** (checa HaveIBeenPwned).
+   - Confirmar estado de **"Confirm email"** conforme a decisão de produto.
+3. **Migrations.** Aplicar **002 (com o fix de RLS) + 003 + 004** no Supabase
+   Dashboard antes de ligar billing.
+4. **Webhook MP.** Registrar `…/api/mp-webhook` no painel MP e salvar
+   `MERCADO_PAGO_WEBHOOK_SECRET` (sem ele o webhook responde 503 — fail-closed).
+5. **Sentry.** Adicionar `VITE_SENTRY_DSN` (front) + `SENTRY_DSN` (back) nas envs
+   do Vercel quando quiser visibilidade de erro em produção.
