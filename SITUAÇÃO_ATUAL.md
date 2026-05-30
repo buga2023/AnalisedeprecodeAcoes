@@ -1,6 +1,6 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-29 (balanceamento de IA em 2 níveis — ver seção 14).
+> Documento vivo. Última atualização: 2026-05-30 (limpezas: fix RLS, lint baseline, chunk >500KB — ver seção 15).
 > Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
 > Pendentes: Fases 8 (FIIs), 9 (IR).
 >
@@ -535,3 +535,50 @@ start, seria preciso estado persistido (e ajustar o teste).
 `npm run test:run` → **657/657** (72 files; +1 teste novo cobrindo o rodízio de modelos
 do OpenRouter em `ai.test.ts`). `npm run build` ✅ ~13,5s (warning de chunk >500KB
 pré-existente). Lint dos arquivos tocados (`_llm.ts`, `ai.test.ts`) limpo.
+
+> ⚠️ **Branch:** a seção 14 + a 15 foram commitadas em **`feat/fase-8-fiis`** (não em
+> `feat/billing-dormante`), porque esse era o HEAD ativo. Como `fase-8-fiis` = `billing-dormante`
+> + Fase 8, o trabalho chega no `billing-dormante` quando o fase-8 mergear. Optou-se por
+> NÃO mover o commit: a Fase 8 (FIIs) estava sendo escrita **em paralelo no mesmo branch**,
+> e cirurgia de branch (checkout/reset) com outro agente mutando o working tree é insegura.
+
+---
+
+## 15. Sessão 2026-05-30 — Limpezas (RLS, lint baseline, chunk de build)
+
+Três correções pequenas e cirúrgicas, cada uma em commit próprio no `feat/fase-8-fiis`.
+Contexto: rodaram em paralelo à implementação da Fase 8 (FIIs) e a um hardening de
+segurança (worktree `.claude/worktrees/hardening`) — por isso o escopo foi deliberadamente
+restrito a arquivos fora do território desses agentes, pra evitar colisão/merge conflict.
+
+### 15.1 Fix de segurança — `increment_usage` (commit `6f6ac81`)
+`supabase/migrations/002_billing.sql`: removido `grant execute ... to authenticated` da
+função `increment_usage(uuid, text)`. Como ela é `security definer` e recebe `p_user_id`
+arbitrário, expô-la via PostgREST RPC permitia um usuário logado incrementar o contador de
+uso de OUTRO (cross-tenant write, empurrando a vítima além do limite free). O servidor chama
+via `service_role` (ignora grants), então a função fica restrita a ele. **Complementa** o fix
+de RLS da view `current_month_usage` (seção 13.2) — fecha o outro vetor da mesma migração.
+
+### 15.2 Redução do lint baseline (commit `0486ff2`)
+Subconjunto seguro (type-only/comentário, **zero runtime**), −3 erros e −16 warnings:
+- `eslint.config.js`: ignora `coverage/` (arquivos gerados pelo istanbul disparavam warnings).
+- `src/lib/sheetParser.ts`: `as any[][]` → `as unknown[][]` (uso já narrowa via `typeof`/`String`).
+- `src/hooks/useStockSearch.ts`: estado tipado com `StockSearchResult`; `catch {}` sem binding ocioso.
+- `supabaseSync.ts` / `supabase.ts` / `ScreenProfile.tsx`: `eslint-disable no-console` órfãos (`--fix`).
+
+**Deixado de fora de propósito:** `any` em `api/brapi.ts`/`api/market.ts` (território do hardening)
+e `src/lib/api.ts`/`fiiScore.ts` (território da Fase 8, c/ `@ts-nocheck`); `setState`-em-effect
+(`App.tsx`/`useAuth.ts`), `Date.now` no render (`WeeklyDigestCard`), refactor de exports
+(`Citations.tsx`), dep de `useMarketQuotes` — pré-existentes e/ou mudança de comportamento.
+⚠️ O `npm run lint` global ainda acusa ~39 problemas, mas o aumento vem do `fiiScore.ts` (WIP da
+Fase 8), não destas mudanças. Passada final de lint quando a Fase 8 estabilizar.
+
+### 15.3 Chunk de build >500KB (commit `81f62ef`)
+`vite.config.ts`: `build.rollupOptions.output.manualChunks` separa `react-vendor` e `supabase`
+em chunks próprios. `index` caiu de **613 KB → 394 KB** (abaixo do limite), `supabase` (207 KB)
+isolado → melhor cache. Total de bytes igual, só reparticionado. Mata o warning de chunk.
+
+### 15.4 Validação
+`tsc -b` ✅ · `npm run build` ✅ ~16s, **sem warning de chunk** · lint limpo nos arquivos
+tocados. Suíte completa não re-rodada nesta passada (incluiria o `fiiScore.test.ts` WIP da Fase 8);
+as mudanças do 15.2/15.3 são type-only/config, cobertas por `tsc -b` + build verde.
