@@ -112,6 +112,12 @@ export interface DadosQuantitativos {
   dividendYield: number;
   debtToEbitda: number;
   netMargin: number;
+  /** "fii" troca a moldura de análise (DY/P-VP/vacância/segmento) em vez de Graham/ROE. */
+  assetType?: "stock" | "fii";
+  /** Segmento do FII (logística, shopping, papel…). Só relevante quando assetType==="fii". */
+  segment?: string;
+  /** Vacância do FII em %. undefined = sem dado. */
+  vacancyRate?: number;
 }
 
 interface PortfolioData {
@@ -325,6 +331,59 @@ export async function analisarAcaoComIA(
   // Cadeias setoriais opcionais sob demanda (mesma logica de fetchAIInsights).
   const contextBlock = baseContextBlock + buildOptionalChainsBlock(baseContextBlock + " " + ticker);
 
+  const isFII = dados.assetType === "fii";
+
+  const roiPosicaoLinha =
+    dados.roiPosicao !== undefined
+      ? (dados.roiPosicao * 100).toFixed(1) + "% (preco atual vs preco medio de compra)"
+      : "N/D (usuario nao tem posicao ou nao informou custo medio)";
+
+  // Bloco de métricas: FIIs não usam Graham/LPA/ROE — a moldura é renda (DY),
+  // desconto/ágio ao patrimônio (P/VP), vacância e resiliência do segmento.
+  const metricasBlock = isFII
+    ? `=== METRICAS CALCULADAS PELO APP (fonte: "calculo do app") — FUNDO IMOBILIARIO ===
+Cotacao atual: R$ ${dados.cotacao.toFixed(2)} (Yahoo Finance)
+Dividend Yield (12m): ${(dados.dividendYield * 100).toFixed(1)}% — principal driver de um FII
+P/VP: ${dados.pvp > 0 ? dados.pvp.toFixed(2) : "N/D"} (preco vs valor patrimonial por cota; <1 = desconto, >1 = agio)
+Segmento: ${dados.segment && dados.segment !== "—" ? dados.segment : "N/D"}
+Vacancia: ${typeof dados.vacancyRate === "number" ? dados.vacancyRate.toFixed(1) + "%" : "N/D"}
+Score do FII (app): ${dados.score}/100 (pondera DY, P/VP, vacancia e segmento)
+ROI da posicao do usuario: ${roiPosicaoLinha}
+=== FIM ===`
+    : `=== METRICAS CALCULADAS PELO APP (fonte: "calculo do app") ===
+Cotacao atual: R$ ${dados.cotacao.toFixed(2)} (Yahoo Finance)
+Preco Teto (Graham): R$ ${dados.precoTeto.toFixed(2)}
+Margem de Seguranca: ${(dados.margemSeguranca * 100).toFixed(1)}%
+Score fundamentalista: ${dados.score}/100
+P/L: ${dados.pl > 0 ? dados.pl.toFixed(1) : "N/D"}
+P/VP: ${dados.pvp > 0 ? dados.pvp.toFixed(2) : "N/D"}
+ROE: ${(dados.roe * 100).toFixed(1)}% (retorno sobre patrimonio liquido)
+ROIC: ${dados.roic && dados.roic !== 0 ? (dados.roic * 100).toFixed(1) + "% (retorno sobre capital total investido — proxy: EBIT*(1-34%)/(divida+PL))" : "N/D"}
+ROI da posicao do usuario: ${roiPosicaoLinha}
+Dividend Yield: ${(dados.dividendYield * 100).toFixed(1)}%
+Divida/EBITDA: ${dados.debtToEbitda.toFixed(1)}x
+Margem Liquida: ${(dados.netMargin * 100).toFixed(1)}%
+=== FIM ===`;
+
+  const instrucoesTipo = isFII
+    ? `INSTRUCOES (FUNDO IMOBILIARIO):
+- Graham, LPA, ROE e Margem de Seguranca NAO se aplicam a FIIs (sao cotas, nao acoes) — NAO os utilize nem os mencione.
+- Avalie pela otica de RENDA: sustentabilidade do Dividend Yield, desconto/agio ao patrimonio (P/VP),
+  vacancia e resiliencia do segmento (logistica/papel/recebiveis = mais defensivos; shopping/lajes = mais ciclicos).
+- Sinalize riscos tipicos de FII quando houver dado/noticia: vacancia alta, inadimplencia de inquilinos,
+  concentracao em poucos imoveis/inquilinos, vencimento de contratos, alavancagem do fundo, queda de juros vs DY.`
+    : `INSTRUCOES DE RENTABILIDADE:
+- Comente explicitamente ROE vs ROIC. Se ROIC < ROE de forma relevante, a empresa
+  esta gerando retorno alto sobre o PL graças à alavancagem; sinalize o risco.
+- Se ROIC > custo de capital implicito (>= SELIC + premio de risco ~5pp), e um
+  bom alocador de capital — vale como "PRO" na tese.
+- Se ROI da posicao do usuario estiver muito acima/abaixo da media historica do
+  papel, comente o que isso sinaliza sobre o momento do papel.`;
+
+  const justificativaHint = isFII
+    ? "1-2 frases CURTAS sobre o angulo qualitativo do FII (qualidade dos imoveis/inquilinos, segmento, regulacao, juros). NAO repita Score/DY/P-VP — o app ja exibe esses numeros. NAO use Graham/LPA/ROE."
+    : "1-2 frases CURTAS sobre o angulo qualitativo (macro, noticia, setor, regulacao) que reforcam ou contradizem a tese. NAO repita Graham/Score/MoS — o app ja exibe esses numeros deterministicamente acima. Foque no que SO o LLM consegue dizer.";
+
   const prompt = `Voce e Pra, analista fundamentalista da Praxia especializada em B3.
 Analise a acao ${ticker} (${nomeEmpresa}) levando em conta fundamentos, contexto
 macroeconomico (SELIC, IPCA, atividade), eventos politicos recentes e o
@@ -340,32 +399,9 @@ Sem dados de RI no momento. Use os fundamentos abaixo + macro + noticias.
 === FIM ===`
 }
 
-=== METRICAS CALCULADAS PELO APP (fonte: "calculo do app") ===
-Cotacao atual: R$ ${dados.cotacao.toFixed(2)} (Yahoo Finance)
-Preco Teto (Graham): R$ ${dados.precoTeto.toFixed(2)}
-Margem de Seguranca: ${(dados.margemSeguranca * 100).toFixed(1)}%
-Score fundamentalista: ${dados.score}/100
-P/L: ${dados.pl > 0 ? dados.pl.toFixed(1) : "N/D"}
-P/VP: ${dados.pvp > 0 ? dados.pvp.toFixed(2) : "N/D"}
-ROE: ${(dados.roe * 100).toFixed(1)}% (retorno sobre patrimonio liquido)
-ROIC: ${dados.roic && dados.roic !== 0 ? (dados.roic * 100).toFixed(1) + "% (retorno sobre capital total investido — proxy: EBIT*(1-34%)/(divida+PL))" : "N/D"}
-ROI da posicao do usuario: ${
-        dados.roiPosicao !== undefined
-          ? (dados.roiPosicao * 100).toFixed(1) + "% (preco atual vs preco medio de compra)"
-          : "N/D (usuario nao tem posicao ou nao informou custo medio)"
-      }
-Dividend Yield: ${(dados.dividendYield * 100).toFixed(1)}%
-Divida/EBITDA: ${dados.debtToEbitda.toFixed(1)}x
-Margem Liquida: ${(dados.netMargin * 100).toFixed(1)}%
-=== FIM ===
+${metricasBlock}
 
-INSTRUCOES DE RENTABILIDADE:
-- Comente explicitamente ROE vs ROIC. Se ROIC < ROE de forma relevante, a empresa
-  esta gerando retorno alto sobre o PL graças à alavancagem; sinalize o risco.
-- Se ROIC > custo de capital implicito (>= SELIC + premio de risco ~5pp), e um
-  bom alocador de capital — vale como "PRO" na tese.
-- Se ROI da posicao do usuario estiver muito acima/abaixo da media historica do
-  papel, comente o que isso sinaliza sobre o momento do papel.
+${instrucoesTipo}
 
 ${contextBlock}
 
@@ -383,7 +419,7 @@ INSTRUCOES ADICIONAIS:
 Retorne SOMENTE um JSON valido, sem markdown:
 {
   "resumoTrimestral": "Resumo 2-3 frases combinando resultado + macro/politica relevante, com [n]",
-  "justificativa": "1-2 frases CURTAS sobre o angulo qualitativo (macro, noticia, setor, regulacao) que reforcam ou contradizem a tese. NAO repita Graham/Score/MoS — o app ja exibe esses numeros deterministicamente acima. Foque no que SO o LLM consegue dizer.",
+  "justificativa": "${justificativaHint}",
   "redFlags": ["alerta com [n] referenciando fonte (noticia, macro, RI ou calculo)"],
   "comparacaoTrimestre": "Comparacao com trimestre anterior + impacto macro em 1-2 frases com [n]",
   "periodoAnalisado": "ex: 3T24 vs 2T24",
@@ -398,12 +434,12 @@ DEVE ter o link correspondente no array "fontes".`;
   analise.fonte = dadosRI.fonte || "";
 
   // Recomendação NÃO vem mais do LLM (prompt é profile-agnostic p/ cache
-  // compartilhado): derivada deterministicamente de score + MoS + perfil.
-  analise.recomendacao = derivarRecomendacao(
-    dados.score,
-    dados.margemSeguranca * 100,
-    profile?.risk
-  );
+  // compartilhado): derivada deterministicamente de score + margem + perfil.
+  // Para FII, "margem" = desconto ao patrimônio (1 − P/VP); Graham não se aplica.
+  const margemParaRec = isFII
+    ? (dados.pvp > 0 ? (1 - dados.pvp) * 100 : 0)
+    : dados.margemSeguranca * 100;
+  analise.recomendacao = derivarRecomendacao(dados.score, margemParaRec, profile?.risk);
   if (!Array.isArray(analise.redFlags)) {
     analise.redFlags = [];
   }
