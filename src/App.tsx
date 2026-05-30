@@ -646,10 +646,10 @@ function App() {
     return "onboardingA";
   });
 
-  // Quando a sessao Supabase chega, salta direto pra app.
-  useEffect(() => {
-    if (user && bootStep !== "app") setBootStep("app");
-  }, [user, bootStep]);
+  // Quando a sessao Supabase chega, salta direto pra app. Ajuste de estado
+  // derivado durante o render (padrao "you might not need an effect"): React
+  // re-renderiza na hora, sem efeito nem flash de render intermediario.
+  if (user && bootStep !== "app") setBootStep("app");
 
   // Registra o JWT pra as chamadas /api/ai (gate de paywall server-side).
   useEffect(() => {

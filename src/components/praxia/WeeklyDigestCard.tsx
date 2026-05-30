@@ -32,6 +32,11 @@ export function WeeklyDigestCard({
 
   // Reconstroi o weekStart a partir da isoWeek para mostrar label PT-BR.
   // (ISO-week → segunda) — algoritmo simples: voltar 7 dias e usar getWeekStart.
+  // Date.now() aqui e proposital: o label depende so da SEMANA (granularidade
+  // grossa), entao recomputar em re-render da o mesmo valor — idempotente na
+  // pratica. A regra de pureza e falso-positivo neste caso, e o early-return
+  // acima impede usar useState lazy-init (violaria rules-of-hooks).
+  // eslint-disable-next-line react-hooks/purity
   const refDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const weekStartLabel = formatWeekLabelPtBR(getWeekStart(refDate));
 

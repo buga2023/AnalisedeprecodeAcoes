@@ -6,7 +6,8 @@ import { PraMark } from "./PraMark";
 import type { ChatMessage, InvestorProfile, Stock } from "@/types/stock";
 import { usePraChat, type ChatTone } from "@/hooks/usePraChat";
 import { riskLabel, horizonLabel } from "@/hooks/useInvestorProfile";
-import { renderWithLinks, splitCitations, SourcesList } from "./Citations";
+import { SourcesList } from "./Citations";
+import { renderWithLinks, splitCitations } from "./citationsUtils";
 
 interface ChatSheetProps {
   open: boolean;

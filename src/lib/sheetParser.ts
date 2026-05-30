@@ -101,7 +101,7 @@ async function parseExcel(file: File): Promise<ParsedSheet> {
   }
 
   const worksheet = workbook.Sheets[sheetName];
-  const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+  const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
 
   if (jsonData.length === 0) {
     throw new Error('A planilha esta vazia.');

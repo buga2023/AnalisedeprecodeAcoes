@@ -3,8 +3,14 @@ import { searchStocks } from "@/lib/api";
 
 const DEBOUNCE_MS = 300;
 
+interface StockSearchHit {
+  ticker: string;
+  label: string;
+  market: "BR" | "US" | "CRYPTO";
+}
+
 export function useStockSearch() {
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<StockSearchHit[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,7 +42,7 @@ export function useStockSearch() {
           });
           setResults(mappedResults);
           setError(null);
-        } catch (err) {
+        } catch {
           setError("Erro ao pesquisar ativos.");
         } finally {
           setIsLoading(false);

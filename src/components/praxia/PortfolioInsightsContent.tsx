@@ -5,7 +5,8 @@ import { fetchAIInsights, toPortfolioData, type AIResponse } from "@/lib/ai";
 import { fetchMacroContext, type MacroContext } from "@/lib/context";
 import { recordHit } from "@/lib/aiTelemetry";
 import type { InvestorProfile, Stock } from "@/types/stock";
-import { renderWithLinks, SourceChip } from "./Citations";
+import { SourceChip } from "./Citations";
+import { renderWithLinks } from "./citationsUtils";
 import { riskLabel } from "@/hooks/useInvestorProfile";
 import { DisclaimerBar } from "./DisclaimerBar";
 import {

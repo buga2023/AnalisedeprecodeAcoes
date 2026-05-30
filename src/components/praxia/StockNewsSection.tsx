@@ -1,7 +1,8 @@
 import { PraxiaTokens } from "./tokens";
 import { PraxiaCard } from "./PraxiaCard";
 import { Icon } from "./Icon";
-import { SourceChip, renderWithLinks } from "./Citations";
+import { SourceChip } from "./Citations";
+import { renderWithLinks } from "./citationsUtils";
 import { DisclaimerBar } from "./DisclaimerBar";
 import { useStockNews } from "@/hooks/useStockNews";
 import type {

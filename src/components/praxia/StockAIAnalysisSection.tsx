@@ -7,7 +7,8 @@ import { calculateGrahamValue, calculateMarginOfSafety } from "@/lib/calculators
 import { buildJustificativaTemplate } from "@/lib/justificativaTemplate";
 import { recordHit } from "@/lib/aiTelemetry";
 import type { InvestorProfile, Stock } from "@/types/stock";
-import { renderWithLinks, SourceChip } from "./Citations";
+import { SourceChip } from "./Citations";
+import { renderWithLinks } from "./citationsUtils";
 import { riskLabel } from "@/hooks/useInvestorProfile";
 import { DisclaimerBar } from "./DisclaimerBar";
 

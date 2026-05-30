@@ -229,7 +229,14 @@ export async function fetchMultipleQuotes(
   return data.results;
 }
 
-export async function searchStocks(query: string): Promise<any[]> {
+export interface SearchStock {
+  stock: string;
+  name: string;
+  region?: string;
+  type?: string;
+}
+
+export async function searchStocks(query: string): Promise<SearchStock[]> {
   if (!query) return [];
   const url = new URL(BRAPI_PROXY_URL, window.location.origin);
   url.searchParams.set("endpoint", "/search");
@@ -239,7 +246,7 @@ export async function searchStocks(query: string): Promise<any[]> {
     const response = await fetch(url.toString());
     if (!response.ok) return [];
     const data = await response.json();
-    return data.stocks || [];
+    return (data.stocks || []) as SearchStock[];
   } catch {
     return [];
   }

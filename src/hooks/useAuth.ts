@@ -29,11 +29,13 @@ const NOT_CONFIGURED: AuthResult = {
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 export function useAuth() {
-  const [state, setState] = useState<AuthState>({
+  // Estado inicial lazy: sem Supabase configurado ja nasce nao-carregando
+  // (nada a buscar), evitando setState sincrono dentro do efeito.
+  const [state, setState] = useState<AuthState>(() => ({
     user: null,
     session: null,
-    loading: true,
-  });
+    loading: isSupabaseConfigured,
+  }));
   // True entre o clique no link de reset (evento PASSWORD_RECOVERY) e a troca
   // de senha bem-sucedida. O App.tsx usa pra forcar a tela de nova senha.
   const [passwordRecovery, setPasswordRecovery] = useState(false);
@@ -41,10 +43,7 @@ export function useAuth() {
   useEffect(() => {
     // Quando as envs faltam, nao tenta nada — fica em estado nao-autenticado
     // e o LoginScreen mostra erro de configuracao.
-    if (!isSupabaseConfigured) {
-      setState({ user: null, session: null, loading: false });
-      return;
-    }
+    if (!isSupabaseConfigured) return;
 
     let mounted = true;
 

@@ -336,7 +336,9 @@ async function fetchYahooSearch(q: string) {
   finally { clearTimeout(timeoutId); }
 }
 
-function mergeYahooData(chartData: any, summaryData: any) {
+type YahooBlob = Record<string, unknown> & { financialData?: Record<string, unknown> };
+
+function mergeYahooData(chartData: YahooBlob, summaryData: YahooBlob) {
   return {
     ...chartData,
     ...summaryData,
