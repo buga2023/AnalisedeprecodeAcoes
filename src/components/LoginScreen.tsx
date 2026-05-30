@@ -6,6 +6,7 @@ import { Icon } from "@/components/praxia/Icon";
 import { useAuth } from "@/hooks/useAuth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { humanizeAuthError } from "@/lib/authErrors";
+import { validatePasswordStrength } from "@/lib/passwordStrength";
 
 interface LoginScreenProps {
   /** Quando true, abre direto no fluxo de definir nova senha (link de reset clicado). */
@@ -15,7 +16,6 @@ interface LoginScreenProps {
 type Mode = "signin" | "signup";
 type Step = "input" | "sent" | "reset-sent" | "recovery";
 
-const MIN_PASSWORD = 8;
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
@@ -40,7 +40,10 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const emailValid = emailRe.test(email.trim());
-  const passwordValid = password.length >= MIN_PASSWORD;
+  const pwCheck = validatePasswordStrength(password);
+  // signin: nao trava por composicao (usuarios legados podem ter senha antiga);
+  // so exige nao-vazia e deixa o Supabase decidir. signup/recovery: forca real.
+  const passwordValid = mode === "signin" ? password.length > 0 : pwCheck.valid;
 
   function resetFeedback() {
     if (error) setError("");
@@ -98,8 +101,9 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
   async function handleRecovery(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
-    if (password.length < MIN_PASSWORD) {
-      setError(`A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`);
+    const check = validatePasswordStrength(password);
+    if (!check.valid) {
+      setError(check.issues.join(" "));
       return;
     }
     if (password !== password2) {
@@ -126,10 +130,11 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
       return `Verifique ${email.trim()}. Clique no link da Praxia para entrar — ele expira em 1 hora.`;
     if (step === "reset-sent")
       return `Enviamos um link de recuperacao para ${email.trim()}. Abra-o no mesmo navegador para definir uma nova senha.`;
-    if (step === "recovery") return "Defina uma nova senha para sua conta. Minimo de 8 caracteres.";
+    if (step === "recovery")
+      return "Defina uma nova senha: 8+ caracteres, com ao menos uma letra e um numero.";
     return mode === "signin"
       ? "Entre com seu email e senha. Esqueceu? Recupere o acesso abaixo."
-      : "Escolha um email e uma senha (minimo 8 caracteres) para comecar.";
+      : "Escolha um email e uma senha (8+ caracteres, com letra e numero) para comecar.";
   })();
 
   return (
@@ -345,6 +350,9 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
                   }
                 />
 
+                {mode === "signup" && password.length > 0 && pwCheck.issues.length > 0 && (
+                  <PasswordHints issues={pwCheck.issues} />
+                )}
                 {notice && <NoticeBox text={notice} accent={accent} />}
                 {error && <ErrorBox text={error} />}
 
@@ -446,13 +454,16 @@ export function LoginScreen({ recoveryMode = false }: LoginScreenProps) {
                   />
                 }
               />
+              {password.length > 0 && pwCheck.issues.length > 0 && (
+                <PasswordHints issues={pwCheck.issues} />
+              )}
               {error && <ErrorBox text={error} />}
               <button
                 type="submit"
-                disabled={submitting || password.length < MIN_PASSWORD || password !== password2}
+                disabled={submitting || !pwCheck.valid || password !== password2}
                 style={primaryBtnStyle(
                   accent,
-                  submitting || password.length < MIN_PASSWORD || password !== password2
+                  submitting || !pwCheck.valid || password !== password2
                 )}
               >
                 {submitting ? "Salvando…" : "Salvar nova senha"}
@@ -528,6 +539,30 @@ function NoticeBox({ text, accent }: { text: string; accent: string }) {
     >
       {text}
     </div>
+  );
+}
+
+function PasswordHints({ issues }: { issues: string[] }) {
+  const T = PraxiaTokens;
+  return (
+    <ul
+      style={{
+        margin: "2px 0 0",
+        padding: "8px 12px 8px 26px",
+        borderRadius: 12,
+        background: "rgba(255,255,255,0.04)",
+        border: `0.5px solid ${T.hairline}`,
+        color: T.ink70,
+        fontFamily: T.body,
+        fontSize: 11.5,
+        lineHeight: 1.5,
+        listStyle: "disc",
+      }}
+    >
+      {issues.map((it) => (
+        <li key={it}>{it}</li>
+      ))}
+    </ul>
   );
 }
 
