@@ -49,7 +49,7 @@ export function parseFIIFields(text: string): FIIFields {
     const n = parseFloat(dy[1].replace(",", "."));
     if (!Number.isNaN(n) && n > 0 && n <= 100) out.dividendYield = n;
   }
-  const seg = text.match(/segmento[:\s]{0,5}([A-Za-zÀ-ÿ\/ ]{3,30}?)(?:\s{2,}|$|\d)/i);
+  const seg = text.match(/segmento[:\s]{0,5}([A-Za-zÀ-ÿ/ ]{3,30}?)(?:\s{2,}|$|\d)/i);
   if (seg) out.segment = seg[1].trim();
   return out;
 }
