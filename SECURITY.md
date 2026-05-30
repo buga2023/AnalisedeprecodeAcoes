@@ -24,11 +24,19 @@ Todos os endpoints fazem logging restrito: `error.message.slice(0, 120)` ou simi
 
 ## Auth
 
-`LoginScreen.tsx:27` ainda valida `admin/1234` no client. Bloqueador absoluto pra produção/cobrança. Roadmap: migrar para `POST /api/auth` com bcrypt + rate-limit + integração Convex (decisão de stack feita em 2026-05-28).
+Autenticação real via **Supabase Auth**: login/cadastro por email+senha
+(`useAuth.signInWithPassword`/`signUpWithPassword`), reset de senha por email e
+magic-link como alternativa. Senhas são hasheadas server-side pelo Supabase
+(bcrypt + salt) — o app nunca armazena senha. Validação de força no client
+(`src/lib/passwordStrength.ts`: ≥8 + letra + número) como defesa-em-profundidade.
+O placeholder `admin/1234` foi **removido** (substituído em `f09fd45`).
+Pré-requisitos de painel (min length, leaked-password protection) no runbook abaixo.
 
 ## Persistência
 
-Tudo em `localStorage` (15+ chaves). Sem sync entre devices. Roadmap: Convex (reactive DB + functions + auth integrado).
+Persistência server-side em **Supabase Postgres** (RLS por owner) com
+write-through + sync on login; `localStorage` segue como cache local e fallback
+offline. (A decisão de stack acabou sendo Supabase, não Convex.)
 
 ## Dependências com CVE pendente
 
@@ -55,9 +63,10 @@ npm install --save xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
 ```
 Alternativa: configurar `npm config set cafile <path-to-corp-cert>` ou usar `@e965/xlsx` (fork community no npm padrão).
 
-## Login placeholder público
+## Login placeholder público — RESOLVIDO
 
-`admin/1234` em `LoginScreen.tsx`. Removível só quando o substituto (Convex auth) estiver pronto. Aceitável enquanto demo, **não para produção**.
+O placeholder `admin/1234` foi removido; a auth real é Supabase email+senha
+(ver seção Auth). Mantido aqui só como registro histórico do achado B5.
 
 ## Histórico de hardening desta sessão
 

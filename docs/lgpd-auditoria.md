@@ -6,6 +6,30 @@
 > Metodologia: leitura estática + confronto entre o que a **política de
 > privacidade afirma** (`src/lib/legal.ts`) e o que o **código realmente faz**.
 
+## Status de remediação (2026-05-30)
+
+Os achados acionáveis foram corrigidos no branch `feat/billing-dormante` (build
+verde, 672 testes, lint baseline zerado). Os achados originais abaixo ficam
+**intactos** (integridade da auditoria); este bloco registra o que mudou.
+
+| Achado | Status | Onde |
+|---|---|---|
+| **A1** Portabilidade (Art. 18 V) | ✅ Resolvido | Tela "Exportar meus dados" + `src/lib/exportUserData.ts` (commit `53f1587`) |
+| **A2** Base legal (Art. 9 II) | ✅ Resolvido | Seção "Base legal de cada tratamento" em `src/lib/legal.ts` (commit `0c221a4`) |
+| **A3** Consentimento sem recusa (Art. 8) | ✅ Resolvido | Botão "Recusar" + registro de decisão/timestamp em `consent.ts`/`CookieConsentBanner` (commit `75de067`) |
+| **M3** Exclusão não-atômica (Art. 18 VI) | ✅ Resolvido | `delete-account.ts` apaga `subscriptions`+`usage_log` explicitamente (commit `0de861d`) |
+| **B5** `SECURITY.md` desatualizado (admin/1234) | ✅ Resolvido | `SECURITY.md` reescrito; auth real é Supabase email+senha/magic-link |
+
+**Pendentes (Médios, não bloqueiam):** M1 (prazo de retenção), M2 (transferência
+internacional — mitigado em parte pela nota Art. 33 adicionada na A2), M4 (SLA de
+acesso — atenuado pelo self-service de export). Decisão de produto/jurídico.
+
+**Pendente (consentimento avançado):** persistir consentimento no servidor e mover
+o banner pra antes do login — só se o jurídico exigir consentimento prévio
+demonstrável entre dispositivos. Hoje o registro é local com timestamp.
+
+---
+
 ## Escopo auditado
 
 | Camada | Artefatos |
