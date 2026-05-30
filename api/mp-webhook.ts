@@ -8,6 +8,7 @@ import {
   mpStatusToSubscriptionStatus,
   type MPPreapproval,
 } from "./_mercadopago";
+import { captureApiError } from "./_sentry";
 
 /**
  * Webhook do Mercado Pago — recebe notificações de mudança de assinatura.
@@ -111,6 +112,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     console.info("[api/mp-webhook] preapproval %s → %s", pre.id, status);
     return response.status(200).json({ ok: true, status });
   } catch (error) {
+    captureApiError(error, "mp-webhook");
     if (error instanceof MPError) {
       console.error("[api/mp-webhook] MP %d %s", error.status, error.message.slice(0, 120));
       // 200 pra não disparar retry infinito em erro nosso de leitura — MP reenvia.

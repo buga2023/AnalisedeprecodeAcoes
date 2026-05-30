@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { applyCors } from "./_cors";
 import { checkRateLimit } from "./_ratelimit";
 import { mpFetch, MPError, mpStatusToSubscriptionStatus, type MPPreapproval } from "./_mercadopago";
+import { captureApiError } from "./_sentry";
 
 /**
  * Cria uma assinatura (Preapproval) do Praxia Pro no Mercado Pago.
@@ -103,6 +104,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
     return response.status(200).json({ init_point: pre.init_point });
   } catch (error) {
+    captureApiError(error, "checkout");
     if (error instanceof MPError) {
       console.error("[api/checkout] MP %d %s", error.status, error.message.slice(0, 120));
       return response.status(502).json({ error: "mp-error", message: error.message });

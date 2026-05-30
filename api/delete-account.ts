@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { applyCors } from "./_cors";
 import { checkRateLimit } from "./_ratelimit";
+import { captureApiError } from "./_sentry";
 
 /**
  * Endpoint LGPD Art. 18 — Exclusao definitiva da conta do usuario.
@@ -114,6 +115,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     console.info("[api/delete-account] sucesso:", { userId });
     return response.status(200).json({ ok: true, userDeleted: true });
   } catch (error) {
+    captureApiError(error, "delete-account");
     const msg = error instanceof Error ? error.message : "";
     console.error("[api/delete-account] erro fatal:", msg.slice(0, 120));
     return response.status(500).json({ error: "internal-error" });
