@@ -42,6 +42,10 @@ export interface Stock {
   sector?: string;
   /** brand color used in the StockAvatar disc */
   brandColor?: string;
+  /** Tipo do ativo. Ausente ou "stock" = ação; "fii" = fundo imobiliário. */
+  assetType?: "stock" | "fii";
+  /** Vacância do FII em % (ex.: 8.5). Só após scraping; undefined = sem dado. */
+  vacancyRate?: number;
   /**
    * Marca quais campos vieram de fallback via IA (quando Yahoo retorna zerado).
    * `fields` lista os campos do Stock que foram preenchidos pela IA; `geradoEm`
