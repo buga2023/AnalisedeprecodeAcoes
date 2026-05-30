@@ -264,7 +264,7 @@ async function fetchYahooSummaryOnce(symbol: string) {
   const timeoutId = setTimeout(() => controller.abort(), 7000);
 
   try {
-    const modules = "defaultKeyStatistics,financialData,incomeStatementHistoryQuarterly,balanceSheetHistoryQuarterly,cashflowStatementHistoryQuarterly";
+    const modules = "defaultKeyStatistics,summaryDetail,financialData,incomeStatementHistoryQuarterly,balanceSheetHistoryQuarterly,cashflowStatementHistoryQuarterly";
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
 
     const res = await fetch(url, {
@@ -278,6 +278,7 @@ async function fetchYahooSummaryOnce(symbol: string) {
     if (!result) return null;
 
     const stats = result.defaultKeyStatistics || {};
+    const summary = result.summaryDetail || {};
     const fin = result.financialData || {};
     const balance = result.balanceSheetHistoryQuarterly?.balanceSheetStatements?.[0] || {};
     const cash = result.cashflowStatementHistoryQuarterly?.cashflowStatements?.[0] || {};
@@ -286,7 +287,8 @@ async function fetchYahooSummaryOnce(symbol: string) {
       earningsPerShare: stats.trailingEps?.raw || 0,
       bookValue: stats.bookValue?.raw || 0,
       priceEarnings: stats.trailingPE?.raw || 0,
-      dividendYield: (stats.dividendYield?.raw || 0) * 100,
+      // Fração (0.09 = 9%) — o que a UI (*100 ao exibir) e calculateStockScore (>0.06) esperam.
+      dividendYield: summary.dividendYield?.raw ?? summary.trailingAnnualDividendYield?.raw ?? stats.dividendYield?.raw ?? 0,
       enterpriseValue: stats.enterpriseValue?.raw || 0,
       financialData: {
         returnOnEquity: (fin.returnOnEquity?.raw || 0) * 100,
