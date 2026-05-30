@@ -122,7 +122,9 @@ describe("api/fundamentals-history", () => {
     const res = makeRes();
     await handler(reqWithUniqueIp({ query: { ticker: "petr4" } }), res);
     expect(res.mock.statusCode).toBe(200);
-    expect(urls[0]).toContain("PETR4.SA");
+    // O 1º quoteSummary deve usar .SA (as fetches de crumb/cookie do Yahoo vêm antes).
+    const summaryUrls = urls.filter((u) => u.includes("quoteSummary"));
+    expect(summaryUrls[0]).toContain("PETR4.SA");
   });
 
   it("constroi quarters ordenados com metricas derivadas reais", async () => {
