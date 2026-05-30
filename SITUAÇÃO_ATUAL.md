@@ -1,6 +1,6 @@
 # Praxia — Situação Atual
 
-> Documento vivo. Última atualização: 2026-05-30 (limpezas: fix RLS, lint baseline, chunk >500KB — ver seção 15).
+> Documento vivo. Última atualização: 2026-05-30 (prontidão de beta gratuito: LGPD + Sentry — ver seção 17).
 > Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
 > Pendentes: Fase 9 (IR). **Fase 8 (FIIs) — MVP concluído** no branch `feat/fase-8-fiis` (ver seção 16).
 >
@@ -624,3 +624,49 @@ aplicados.
   mensal, stats de gestora/nº cotistas; depois Fase 9 (IR — FIIs têm regra fiscal própria).
 - Branch `feat/fase-8-fiis` tem histórico **intercalado** com commits de limpeza de outro agente
   (lint/build/RLS/IA) — não mergeado na `main`; abrir PR fica a critério.
+
+---
+
+## 17. Sessão 2026-05-30 — Prontidão de beta gratuito: LGPD + Observabilidade
+
+Plano: `~/.claude/plans/zazzy-waddling-lynx.md`. Objetivo: destravar um **beta gratuito** (billing
+DORMENTE, intacto). Decisão de produto: base legal do storage = **execução de contrato** (logo o
+banner é AVISO, sem "Recusar", sem migration). Landing page = fast-follow. Commits intercalados no
+`feat/fase-8-fiis` (mesmo branch da Fase 8), ordem fria→quente pra minimizar colisão.
+
+### 17.1 Observabilidade — Sentry (commit `9018122`)
+`@sentry/react` + `@sentry/node` instalados (proxy MITM não bloqueou). Mantida a interface do shim
+`telemetry.ts`: sem `VITE_SENTRY_DSN`/`SENTRY_DSN` → no-op/console (dev e testes sem rede); com DSN →
+client carrega `@sentry/react` por **dynamic import** (chunk à parte) e `captureError/captureMessage`
+encaminham (`beforeSend` remove cookies/headers/body). **NOVO** `api/_sentry.ts` (`captureServer`,
+`@sentry/node` lazy) plugado nos catch fatais de `api/ai.ts` e `api/delete-account.ts`. ErrorBoundary
+global em `main.tsx`. `.env.example` documenta os 2 DSNs. +1 teste (forward com DSN).
+
+### 17.2 LGPD (commits `ae3a2fe`, `59b8d12`, `e22e4be`, `f785e65`)
+Fecha os 3 "Alto" + o "Médio" da auditoria (`docs/lgpd-auditoria.md`):
+- **Portabilidade (Art. 18 V):** **NOVO** `src/lib/dataExport.ts` (export client-side sob a RLS do
+  usuário, reusa os `fetch*FromServer` do `supabaseSync`; `buildExportPayload` puro; `downloadJson` via
+  Blob, sem dep) + **NOVO** `ScreenExportData.tsx` (cabeada no `App.tsx` como `screen:"export-data"` +
+  `ToolButton` "Exportar meus dados" no `ScreenProfile`). **NOVO** `src/lib/localKeys.ts`: lista de
+  chaves do localStorage compartilhada por export e exclusão (fim da duplicata no `ScreenDeleteAccount`).
+- **Base legal (Art. 7) + Transferência internacional (Art. 33):** novas seções na `PRIVACY_POLICY`
+  (`legal.ts`); execução de contrato p/ conta/carteira/perfil, legítimo interesse p/ IP; retenção
+  declarada; portabilidade corrigida ("Exportar meus dados", era "Exportar resultados").
+- **Consentimento (Art. 8):** `CookieConsentBanner` reposicionado como **aviso de transparência** (base =
+  contrato → sem "Recusar"); `LGPD_COOKIE_NOTICE` perde a linguagem de consentimento; `CONSENT_VERSION`
+  bumpada pra reexibir.
+- **Exclusão atômica (Art. 18 VI):** `api/delete-account.ts` apaga `subscriptions` + `usage_log`
+  explicitamente (antes só por cascade); teste happy-path 4→6 tabelas.
+
+### 17.3 Validação
+`tsc -b` ✅ · `npm run build` ✅ (index **399 KB**, sem warning de chunk) · `npm run test:run` →
+**691/691** (77 files; +novos: telemetry forward, dataExport×6, legal×3, delete-account 6 tabelas) ·
+lint dos arquivos tocados limpo (o único erro acusado — `setState`-em-effect no `App.tsx:651` do
+boot — é **pré-existente**, não introduzido aqui).
+
+### 17.4 Pendente (fast-follow, não bloqueia o beta)
+- **Link Política/Termos no `LoginScreen`** (pré-login) — adiado: exige rota pré-auth no `App.tsx`
+  (arquivo mais quente) por ganho marginal; banner pós-login + telas legais no Profile já cobrem.
+- **Sentry real:** criar projeto Sentry e setar `VITE_SENTRY_DSN`/`SENTRY_DSN` na Vercel (código pronto).
+- **Landing page**, testes dos 6 módulos de billing/IA, upgrade `xlsx`, busca global (`useStockSearch`
+  órfã), PWA — fast-follows já listados no plano.
