@@ -1,17 +1,21 @@
 /**
- * Shim de telemetria — interface estável que vai virar Sentry quando a
- * conta estiver configurada. Até lá, despeja em `console.error` com tag.
+ * Telemetria de erro — interface estável consumida por todo o app
+ * (`captureError(err, ctx)`, `captureMessage`, `initTelemetry`).
  *
- * Substituição futura (1 commit):
- *   1. `npm install @sentry/react`
- *   2. Em `src/main.tsx`, antes do render:
- *        Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN, environment: import.meta.env.MODE });
- *   3. Trocar `captureError` daqui por `Sentry.captureException(err, { extra: ctx })`.
+ * Comportamento: sem `VITE_SENTRY_DSN` → no-op (só `console`), pra que dev local
+ * não pague nada e a suíte de testes rode sem rede. Com DSN → `initTelemetry`
+ * carrega `@sentry/react` via DYNAMIC import (chunk separado, fora do bundle
+ * base) e os captures passam a encaminhar pro Sentry.
  *
- * Manter SEMPRE essa interface estável — `captureError(err, ctx)` —
- * para que os call sites (`usePraChat`, `useStockQuotes`, etc.) não
- * precisem mudar quando trocarmos o backend de erro.
+ * Minimização (LGPD): `beforeSend` remove cookies/headers/body e nunca
+ * enviamos email/UUID — só `tag` do site + `extra` controlado pelo call site.
  */
+
+import type * as SentryReact from "@sentry/react";
+
+// Ref do módulo Sentry quando carregado (null = ainda não/never). Os captures
+// são síncronos: se o Sentry ainda não resolveu o dynamic import, caem no console.
+let sentry: typeof SentryReact | null = null;
 
 export interface ErrorContext {
   /** Identificador curto do site da chamada (ex.: "usePraChat", "fetchStockQuote"). */
@@ -21,23 +25,53 @@ export interface ErrorContext {
 }
 
 export function captureError(err: unknown, ctx: ErrorContext): void {
+  if (sentry) {
+    sentry.captureException(err, { tags: { site: ctx.tag }, extra: ctx.extra });
+    return;
+  }
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[telemetry:${ctx.tag}] ${msg.slice(0, 200)}`, ctx.extra ?? "");
 }
 
 /**
- * Para eventos não-erro que vão virar `Sentry.captureMessage` (warnings de UX,
- * estados degradados detectados, etc.). Hoje só loga.
+ * Para eventos não-erro (warnings de UX, estados degradados detectados, etc.).
  */
 export function captureMessage(message: string, ctx: ErrorContext): void {
-  console.warn(`[telemetry:${ctx.tag}] ${message.slice(0, 200)}`, ctx.extra ?? "");
+  const text = message.slice(0, 200);
+  if (sentry) {
+    sentry.captureMessage(text, { level: "warning", tags: { site: ctx.tag }, extra: ctx.extra });
+    return;
+  }
+  console.warn(`[telemetry:${ctx.tag}] ${text}`, ctx.extra ?? "");
 }
 
 /**
- * Inicializador no-op — quando Sentry chegar, vai chamar `Sentry.init(...)`.
- * Call site: `src/main.tsx` antes do `createRoot(...).render(...)`.
+ * Inicializador. Call site: `src/main.tsx` antes do `createRoot(...).render(...)`.
+ * Sem DSN: no-op. Com DSN: carrega e inicializa o Sentry de forma assíncrona
+ * (não bloqueia o boot; erros antes do load caem no console).
  */
 export function initTelemetry(): void {
-  // Hoje no-op. Quando configurar Sentry, ler `import.meta.env.VITE_SENTRY_DSN`
-  // — se vazio, manter no-op pra que o dev local não pague nada.
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
+  if (!dsn) return;
+  void import("@sentry/react")
+    .then((S) => {
+      S.init({
+        dsn,
+        environment: import.meta.env.MODE,
+        tracesSampleRate: 0, // só erros — sem performance tracing (custo/ruído)
+        sendDefaultPii: false,
+        beforeSend(event) {
+          if (event.request) {
+            delete event.request.cookies;
+            delete event.request.headers;
+            delete event.request.data;
+          }
+          return event;
+        },
+      });
+      sentry = S;
+    })
+    .catch(() => {
+      // Falha ao carregar o Sentry nunca pode quebrar o app — segue no-op/console.
+    });
 }

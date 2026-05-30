@@ -5,6 +5,7 @@ import { cacheKey, getCached, setCached, getCachedDurable, setCachedDurable } fr
 import { getSemanticCached, setSemanticCached } from "./_semanticCache";
 import { callLLM, defaultProvider, hasAnyProviderKey, LLMError, PROVIDERS, type Message, type Provider } from "./_llm";
 import { assertCanUseAI, trackUsage, GuardError } from "./_usageGuard";
+import { captureServer } from "./_sentry";
 
 const MAX_TOKENS_HARD_CAP = 2048;
 
@@ -132,6 +133,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
     const msg = error instanceof Error ? error.message : "Erro interno";
     console.error("[api/ai] %s 500 %s", provider, msg.slice(0, 120));
+    void captureServer(error, { tag: "api/ai" });
     return response.status(500).json({ error: `Erro interno no servidor ao processar ${provider}` });
   }
 }
