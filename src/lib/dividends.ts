@@ -126,6 +126,17 @@ export function projectDividends(
   return buckets;
 }
 
+/**
+ * DY anual em % a partir do histórico: soma dos pagamentos nos últimos 12 meses
+ * (a partir do mais recente) ÷ preço × 100. Retorna 0 se faltar dado.
+ */
+export function dividendYieldFromHistory(history: DividendEvent[], price: number): number {
+  if (!history || history.length === 0 || !(price > 0)) return 0;
+  const annual = estimateAnnualTotal(history);
+  if (annual <= 0) return 0;
+  return (annual / price) * 100;
+}
+
 /* ─── helpers puros ──────────────────────────────────────────────────────── */
 
 function build12Buckets(now: Date): MonthBucket[] {
