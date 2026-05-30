@@ -2,7 +2,7 @@
 
 > Documento vivo. Última atualização: 2026-05-30 (limpezas: fix RLS, lint baseline, chunk >500KB — ver seção 15).
 > Estado: Fases 0, 0.5, 1, 2, **3 (Dividendos)**, **4 (Screener "Descobrir")**, **5 (Rebalanceador)**, **6 (Digest Semanal IA)** e **7 (Histórico de Fundamentos)** concluídas e **commitadas no branch `main`**.
-> Pendentes: Fases 8 (FIIs), 9 (IR).
+> Pendentes: Fase 9 (IR). **Fase 8 (FIIs) — MVP concluído** no branch `feat/fase-8-fiis` (ver seção 16).
 >
 > **Sessão 2026-05-29 (4 agentes paralelos em git worktrees, integrados via merge validado):**
 > - Fase 4 (Screener) e Fase 5 (Rebalanceador) implementadas e mergeadas (zero conflito, build/tsc/lint = baseline).
@@ -193,7 +193,7 @@ Aprovado na sessão de 2026-05-28. Documento completo no plano salvo em `~/.clau
 | **Fase 5** | Feature #3: Rebalanceador IA acionável | 3 dias | Pendente |
 | **Fase 6** | Feature #9: Digest semanal IA | 2–3 dias | ✅ **Concluída** |
 | **Fase 7** | Feature #10: Histórico de fundamentos | 3 dias | ✅ **Concluída** |
-| **Fase 8** | Feature #8: Suporte a FIIs | 5–7 dias | Pendente |
+| **Fase 8** | Feature #8: Suporte a FIIs | 5–7 dias | ✅ **MVP concluído** (branch `feat/fase-8-fiis` — ver seção 16) |
 | **Fase 9** | Feature #7: Calculadora de IR (depende de #8) | 4–5 dias | Pendente |
 
 ---
@@ -582,3 +582,45 @@ isolado → melhor cache. Total de bytes igual, só reparticionado. Mata o warni
 `tsc -b` ✅ · `npm run build` ✅ ~16s, **sem warning de chunk** · lint limpo nos arquivos
 tocados. Suíte completa não re-rodada nesta passada (incluiria o `fiiScore.test.ts` WIP da Fase 8);
 as mudanças do 15.2/15.3 são type-only/config, cobertas por `tsc -b` + build verde.
+
+---
+
+## 16. Sessão 2026-05-30 — Fase 8 (MVP): Suporte a FIIs
+
+Spec: `docs/superpowers/specs/2026-05-29-fase-8-fiis-mvp-design.md`. Plano:
+`docs/superpowers/plans/2026-05-29-fase-8-fiis-mvp.md`. Implementado via subagent-driven
+(TDD por task) no branch `feat/fase-8-fiis`. **MVP enxuto** — alocação separada Ações/FIIs,
+calendário mensal e stats de gestora/cotistas ficam pra fase posterior.
+
+### 16.1 O que entrou
+
+| Camada | Mudança |
+|---|---|
+| **Tipos** | `Stock.assetType?: "stock" \| "fii"` + `Stock.vacancyRate?: number` (opcionais, retrocompatíveis). |
+| **Detecção** | `src/lib/stockMeta.ts`: `detectAssetType(ticker, name)` — FII só se `^[A-Z]{4}11$` **E** nome casa `/F\.?I\.?I\|IMOB\|FDO\.?\s*INV\|IMOBILI/i` (desempata FII vs. units tipo SANB11/TAEE11). `detectFIISegment(ticker)` via mapa estático `FII_SEGMENTS`. |
+| **Score FII** | **NOVO** `src/lib/fiiScore.ts`: `calculateFIIScore` — DY 40 · P/VP 30 · Vacância 15 · Segmento 15; **renormaliza** sobre dims com dado (omite vacância/DY/P-VP ausentes). Reusa `ScoreBreakdown`. |
+| **DY em cascata** | DY do FII (Yahoo summary entregava ~0) resolvido por: **(a)** histórico (`dividendYieldFromHistory` novo em `dividends.ts` = soma 12m ÷ preço) → **(b)** Yahoo `summaryDetail` → **(c)** scraping. |
+| **Yahoo summaryDetail** | `api/brapi.ts`: módulo `summaryDetail` adicionado; DY passa a ser lido de lá **como fração** (unidade canônica que UI×100 e `calculateStockScore`>0.06 já esperavam). **Efeito colateral benéfico:** ativa a dimensão DY do score de **ações** (antes morta). |
+| **Scraping estruturado** | **NOVO** `api/fii-data.ts` (parser puro `parseFIIFields` → vacância + DY%, degradação 200) + cliente `src/lib/fiiData.ts` (cache `praxia-fii-data:{TICKER}` 7d). |
+| **Mapper** | `src/lib/stockMapper.ts`: ramifica score por `assetType` (FII → `calculateFIIScore`, DY×100 fração→%); path de ação **idêntico** ao anterior. |
+| **UI** | **NOVO** `FIIDetailStats.tsx` (DY/P-VP/segmento/vacância + 4 barras; vacância lazy via scrape, score recomputa). `ScoreDimBar` extraído pra `src/components/praxia/ScoreDimBar.tsx` (reuso). `ScreenStockDetail`: FII esconde "Valuation — Como calculamos" (Graham não se aplica) e mostra `FIIDetailStats`. `ScreenMarket`: toggle **Ações \| FIIs** + lista `DISCOVERY_FII`. |
+
+**Endpoint novo:** `GET /api/fii-data?ticker=XXXX11` (vacância + DY de scraping).
+**Chave de cache nova:** `praxia-fii-data:{TICKER}` (TTL 7d).
+
+### 16.2 Validação
+`tsc -b` ✅ 0 erros · `npm run test:run` → **679/679** (75 files; +24 casos: stockMeta, fiiScore,
+dividends, stockMapper, fii-data) · `npm run build` ✅ · lint **sem erro novo** (o único introduzido
+— escape no regex de segmento — foi corrigido; depois o `segment` do scraping foi removido por ser
+caminho morto, conforme code review). Code review final: 0 Critical; ajustes I1 (effect só por
+ticker, evita refetch de `/api/dividends` no polling de preço) e I2/I3 (remove `segment` morto)
+aplicados.
+
+### 16.3 Pendente / verificação manual
+- **Teste manual no `npm run dev` ainda não feito** (scraping/dividendos dependem de rede + interação):
+  adicionar `HGLG11` (vira FII, score FII, detalhe com `FIIDetailStats`, vacância lazy), `SANB11`
+  (segue ação), toggle no Mercado, `PETR4` (DY agora populado pelo summaryDetail).
+- **Próxima fase de FII:** alocação separada Ações/FIIs na Home/Análise, integração com calendário
+  mensal, stats de gestora/nº cotistas; depois Fase 9 (IR — FIIs têm regra fiscal própria).
+- Branch `feat/fase-8-fiis` tem histórico **intercalado** com commits de limpeza de outro agente
+  (lint/build/RLS/IA) — não mergeado na `main`; abrir PR fica a critério.
