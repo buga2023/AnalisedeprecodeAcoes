@@ -617,13 +617,38 @@ ticker, evita refetch de `/api/dividends` no polling de preço) e I2/I3 (remove 
 aplicados.
 
 ### 16.3 Pendente / verificação manual
-- **Teste manual no `npm run dev` ainda não feito** (scraping/dividendos dependem de rede + interação):
-  adicionar `HGLG11` (vira FII, score FII, detalhe com `FIIDetailStats`, vacância lazy), `SANB11`
-  (segue ação), toggle no Mercado, `PETR4` (DY agora populado pelo summaryDetail).
 - **Próxima fase de FII:** alocação separada Ações/FIIs na Home/Análise, integração com calendário
   mensal, stats de gestora/nº cotistas; depois Fase 9 (IR — FIIs têm regra fiscal própria).
 - Branch `feat/fase-8-fiis` tem histórico **intercalado** com commits de limpeza de outro agente
   (lint/build/RLS/IA) — não mergeado na `main`; abrir PR fica a critério.
+
+### 16.4 Verificação no app (2026-05-30) + correções que ela revelou
+
+Verificado **end-to-end no Edge** (Playwright `channel:'msedge'`; conta de teste descartável
+criada/apagada via admin Supabase). Login → Mercado → toggle Ações|FIIs → buscar `HGLG11`
+(detectado "FII HGLG PAXCI · Logística") → adicionar → abrir detalhe. Confirmado: detecção,
+segmento, **Score FII 91/100**, `FIIDetailStats` (DY 8.5% · P/VP 0.98 · Logística · vacância "—").
+
+A verificação revelou bugs que foram corrigidos nesta sessão:
+
+1. **Yahoo `quoteSummary` 401 "Invalid Crumb"** (`api/_yahooCrumb.ts` novo, wired em `api/brapi.ts`
+   e `api/fundamentals-history.ts`). Desde ~2023 o endpoint exige crumb+cookie; sem isso TODO o
+   fundamento (bookValue/EPS/ROE/dívida/DY) vinha vazio → score fundamentalista zerado p/ ações E
+   P/VP+DY dos FIIs. Helper com cache 30min + retry em 401. **Efeito colateral bom:** ativou a
+   dimensão DY do score de ações. Provado ao vivo (PETR4/HGLG11 com dados reais).
+2. **Leaks de Graham na tela de FII** — o MVP só escondeu o card "Valuation — Como calculamos";
+   faltava esconder, no `ScreenStockDetail`, o card **"Análise calculada"** (mensagem Graham) e o
+   **grid de stats de ação** (P/L, ROE, Preço-teto Graham, Margem seg). Agora ambos saem p/ FII
+   (`assetType !== "fii"`). `buildJustificativaTemplate` ganhou branch FII (DY/P-VP/segmento, sem
+   Graham) + teste.
+
+**Validação:** `tsc -b` ✅ · `npm run test:run` **681/681** (76 files) ✅ · `npm run build` ✅ ·
+lint sem erro novo. Commits: `63d038a`, `d4eef41` (crumb), `5ee433c` (justificativa FII),
+`fec34b3` (esconde Graham no detalhe).
+
+**Follow-up restante:** o **complemento qualitativo da IA** (`analisarAcaoComIA`) ainda usa prompt
+com Graham; pra FII precisa de prompt próprio (custa tokens) — não feito. Na verificação a IA nem
+carregou (429/404), então não apareceu; mas quando carregar, pode citar Graham. Item separado.
 
 ---
 
