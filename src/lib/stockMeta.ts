@@ -69,6 +69,37 @@ export function detectSector(ticker: string): string {
   return SECTOR_HINTS[stem] ?? SECTOR_HINTS[t] ?? '—';
 }
 
+/** Raízes (4 letras) de FIIs conhecidos → segmento. Igual ao padrão de SECTOR_HINTS. */
+const FII_SEGMENTS: Record<string, string> = {
+  HGLG: 'Logística', BTLG: 'Logística', XPLG: 'Logística', VILG: 'Logística',
+  XPML: 'Shopping', VISC: 'Shopping', HSML: 'Shopping', MALL: 'Shopping',
+  MXRF: 'Papel/Recebíveis', KNCR: 'Papel/Recebíveis', KNIP: 'Papel/Recebíveis',
+  IRDM: 'Papel/Recebíveis', RECR: 'Papel/Recebíveis', CPTS: 'Papel/Recebíveis',
+  KNRI: 'Lajes/Híbrido', HGRE: 'Lajes Corporativas', PVBI: 'Lajes Corporativas',
+  HGRU: 'Renda Urbana', TRXF: 'Renda Urbana', VGHF: 'Híbrido',
+  RBRF: 'Fundo de Fundos', KFOF: 'Fundo de Fundos',
+};
+
+const FII_NAME_RE = /F\.?I\.?I|IMOB|FDO\.?\s*INV|IMOBILI/i;
+
+/**
+ * Detecta se o ticker é um FII. FIIs e units de ação compartilham o formato
+ * XXXX11, então o nome (do Yahoo) é o desempate: só é FII se o nome casar
+ * termos imobiliários. Sem nome, assume ação (conservador).
+ */
+export function detectAssetType(ticker: string, name?: string): "stock" | "fii" {
+  const t = ticker.toUpperCase();
+  if (!/^[A-Z]{4}11$/.test(t)) return "stock";
+  if (name && FII_NAME_RE.test(name)) return "fii";
+  return "stock";
+}
+
+/** Segmento do FII por raiz do ticker (heurístico; fallback "—"). */
+export function detectFIISegment(ticker: string): string {
+  const stem = ticker.toUpperCase().replace(/\d+$/, '').slice(0, 4);
+  return FII_SEGMENTS[stem] ?? '—';
+}
+
 /** Branded avatar color, with a deterministic fallback. */
 export function brandColor(ticker: string): string {
   const t = ticker.toUpperCase();
