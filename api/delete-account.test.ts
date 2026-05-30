@@ -143,7 +143,7 @@ describe("api/delete-account", () => {
     expect((res.mock.body as { error: string }).error).toBe("invalid-token");
   });
 
-  it("happy path: apaga as 4 tabelas e o auth.user, responde 200", async () => {
+  it("happy path: apaga as 6 tabelas e o auth.user, responde 200", async () => {
     const handler = await loadHandler();
     const req = reqWithUniqueIp({
       method: "POST",
@@ -158,7 +158,9 @@ describe("api/delete-account", () => {
       "portfolio_stocks",
       "preferences",
       "profiles",
+      "subscriptions",
       "transactions",
+      "usage_log",
     ]);
     expect(h.state.deleteUserCalledWith).toEqual(["user-123"]);
   });

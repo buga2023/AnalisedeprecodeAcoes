@@ -52,6 +52,9 @@ const ScreenLegalDoc = lazy(() =>
 const ScreenDeleteAccount = lazy(() =>
   import("@/components/praxia/screens/ScreenDeleteAccount").then((m) => ({ default: m.ScreenDeleteAccount }))
 );
+const ScreenExportData = lazy(() =>
+  import("@/components/praxia/screens/ScreenExportData").then((m) => ({ default: m.ScreenExportData }))
+);
 const ChatSheet = lazy(() =>
   import("@/components/praxia/ChatSheet").then((m) => ({ default: m.ChatSheet }))
 );
@@ -87,7 +90,7 @@ import type {
 
 const BILLING_ENABLED = import.meta.env.VITE_BILLING_ENABLED === "true";
 
-type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "rebalance" | "privacy" | "terms" | "delete-account" | "billing";
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "rebalance" | "privacy" | "terms" | "delete-account" | "export-data" | "billing";
 
 function ScreenFallback() {
   return (
@@ -379,6 +382,7 @@ function PraxiaApp({ username, userId, onLogout }: { username: string; userId: s
           onOpenPrivacy={() => setScreen("privacy")}
           onOpenTerms={() => setScreen("terms")}
           onOpenDeleteAccount={() => setScreen("delete-account")}
+          onOpenExportData={() => setScreen("export-data")}
           plan={plan}
           onManagePlan={BILLING_ENABLED ? () => setScreen("billing") : undefined}
           onLogout={onLogout}
@@ -481,6 +485,10 @@ function PraxiaApp({ username, userId, onLogout }: { username: string; userId: s
 
         {screen === "terms" && (
           <ScreenLegalDoc accent={accent} doc="terms" onBack={() => setScreen("profile")} />
+        )}
+
+        {screen === "export-data" && (
+          <ScreenExportData accent={accent} onBack={() => setScreen("profile")} />
         )}
 
         {screen === "delete-account" && (

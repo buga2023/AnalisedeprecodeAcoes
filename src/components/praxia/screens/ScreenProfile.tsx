@@ -37,6 +37,7 @@ interface ScreenProfileProps {
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
   onOpenDeleteAccount?: () => void;
+  onOpenExportData?: () => void;
   plan?: Plan;
   /** Quando presente, mostra "Gerenciar plano" (billing ligado). */
   onManagePlan?: () => void;
@@ -61,6 +62,7 @@ export function ScreenProfile({
   onOpenPrivacy,
   onOpenTerms,
   onOpenDeleteAccount,
+  onOpenExportData,
   plan = "free",
   onManagePlan,
   onLogout,
@@ -359,9 +361,9 @@ export function ScreenProfile({
         {/* Legal — LGPD + Termos de Uso + Excluir minhas informações.
             Estes acessos são obrigatórios pela LGPD (Art. 18) e por boa prática
             antes da Praxia introduzir conta paga / persistência server-side. */}
-        {(onOpenPrivacy || onOpenTerms || onOpenDeleteAccount) && (
+        {(onOpenPrivacy || onOpenTerms || onOpenExportData || onOpenDeleteAccount) && (
           <PraxiaCard padding={16}>
-            <SettingLabel label="Legal e privacidade" sub="LGPD · Termos · Excluir conta" />
+            <SettingLabel label="Legal e privacidade" sub="LGPD · Termos · Exportar · Excluir" />
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               {onOpenPrivacy && (
                 <ToolButton accent={accent} onClick={onOpenPrivacy} icon={<Icon.shield size={14} color={accent} />}>
@@ -371,6 +373,11 @@ export function ScreenProfile({
               {onOpenTerms && (
                 <ToolButton accent={accent} onClick={onOpenTerms} icon={<Icon.shield size={14} color={accent} />}>
                   Termos de uso
+                </ToolButton>
+              )}
+              {onOpenExportData && (
+                <ToolButton accent={accent} onClick={onOpenExportData} icon={<Icon.upload size={14} color={accent} />}>
+                  Exportar meus dados
                 </ToolButton>
               )}
               {onOpenDeleteAccount && (
