@@ -347,7 +347,9 @@ export function ScreenStockDetail({
           </div>
         )}
 
-        {/* Heurística local — NÃO é IA. Cálculo determinístico do app. */}
+        {/* Heurística local — NÃO é IA. Cálculo determinístico do app.
+            Só para AÇÕES: usa Graham, que não se aplica a FIIs (FIIDetailStats cobre). */}
+        {stock.assetType !== "fii" && (
         <PraxiaCard
           padding={14}
           style={{
@@ -439,6 +441,7 @@ export function ScreenStockDetail({
             fonte: cálculo do app (Graham {grahamValue > 0 ? `R$ ${grahamValue.toFixed(2)}` : "indisponível"}, margem {grahamValue > 0 ? `${margin.toFixed(1)}%` : "—"}) + perfil do usuário
           </div>
         </PraxiaCard>
+        )}
 
         {stock.aiEstimated && stock.aiEstimated.fields.length > 0 && (
           <div
@@ -494,7 +497,8 @@ export function ScreenStockDetail({
           </div>
         )}
 
-        {/* stats */}
+        {/* stats — só para AÇÕES; FIIs usam FIIDetailStats (P/VP, DY, segmento, vacância). */}
+        {stock.assetType !== "fii" && (
         <div
           style={{
             marginTop: 16,
@@ -562,6 +566,7 @@ export function ScreenStockDetail({
             );
           })()}
         </div>
+        )}
 
         {/* ── Valuation — Como calculamos ──────────────────────────── */}
         {stock.assetType === "fii" ? (
