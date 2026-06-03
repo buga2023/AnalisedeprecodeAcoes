@@ -9,8 +9,8 @@
  * Arquivos `_*.ts` em `api/` são utilitários — não viram rota Vercel.
  */
 
-export type Provider = "groq" | "openai" | "anthropic" | "gemini";
-export const PROVIDERS: Provider[] = ["groq", "openai", "anthropic", "gemini"];
+export type Provider = "nvidia" | "groq" | "openai" | "anthropic" | "gemini";
+export const PROVIDERS: Provider[] = ["nvidia", "groq", "openai", "anthropic", "gemini"];
 
 export interface Message {
   role: "system" | "user" | "assistant";
@@ -42,6 +42,7 @@ export class LLMError extends Error {
 /** Resolve a chave do provedor em `process.env`. Retorna `null` se ausente. */
 export function getProviderApiKey(provider: Provider): string | null {
   const map: Record<Provider, string | undefined> = {
+    nvidia: process.env.NVIDIA_API_KEY,
     openai: process.env.OPENAI_API_KEY,
     anthropic: process.env.ANTHROPIC_API_KEY,
     gemini: process.env.GEMINI_API_KEY,
@@ -50,10 +51,10 @@ export function getProviderApiKey(provider: Provider): string | null {
   return map[provider] || null;
 }
 
-/** Resolve o provedor padrão: env `AI_PROVIDER` ou `groq`. */
+/** Resolve o provedor padrão: env `AI_PROVIDER` ou `nvidia`. */
 export function defaultProvider(): Provider {
-  const fromEnv = (process.env.AI_PROVIDER as Provider) || "groq";
-  return PROVIDERS.includes(fromEnv) ? fromEnv : "groq";
+  const fromEnv = (process.env.AI_PROVIDER as Provider) || "nvidia";
+  return PROVIDERS.includes(fromEnv) ? fromEnv : "nvidia";
 }
 
 /**
@@ -68,6 +69,8 @@ export async function callLLM(opts: CallLLMOptions): Promise<CallLLMResult> {
   }
 
   switch (provider) {
+    case "nvidia":
+      return callNvidia(apiKey, messages, temperature, max_tokens, response_format);
     case "openai":
       return callOpenAI(apiKey, messages, temperature, max_tokens, response_format);
     case "anthropic":
@@ -79,6 +82,32 @@ export async function callLLM(opts: CallLLMOptions): Promise<CallLLMResult> {
     default:
       throw new LLMError(400, `Provider ${provider} nao suportado.`);
   }
+}
+
+async function callNvidia(
+  apiKey: string,
+  messages: Message[],
+  temperature: number,
+  max_tokens: number,
+  response_format: unknown
+): Promise<CallLLMResult> {
+  const res = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "meta/llama-3.3-70b-instruct",
+      messages,
+      temperature,
+      max_tokens,
+      ...(response_format ? { response_format } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const err = await safeJson(res);
+    throw new LLMError(res.status, err?.error?.message || "Erro na NVIDIA NIM");
+  }
+  const data = await res.json();
+  return { content: data.choices?.[0]?.message?.content ?? "", provider: "nvidia" };
 }
 
 async function callOpenAI(

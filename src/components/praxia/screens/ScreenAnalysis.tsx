@@ -29,6 +29,7 @@ interface ScreenAnalysisProps {
   onOpenStock: (stock: Stock) => void;
   onOpenAlerts: () => void;
   onOpenCompare: (ticker: string) => void;
+  onOpenRebalance?: () => void;
 }
 
 export function ScreenAnalysis({
@@ -41,6 +42,7 @@ export function ScreenAnalysis({
   onOpenStock,
   onOpenAlerts,
   onOpenCompare,
+  onOpenRebalance,
 }: ScreenAnalysisProps) {
   const T = PraxiaTokens;
   const owned = useMemo(() => stocks.filter((s) => (s.quantity || 0) > 0), [stocks]);
@@ -233,6 +235,31 @@ export function ScreenAnalysis({
                   <AllocationSummary data={allocation} />
                 </PraxiaCard>
               </div>
+            )}
+
+            {onOpenRebalance && owned.length >= 2 && (
+              <button
+                onClick={onOpenRebalance}
+                style={{
+                  width: "100%",
+                  padding: "13px 16px",
+                  borderRadius: 14,
+                  background: `${accent}12`,
+                  border: `0.5px solid ${accent}44`,
+                  color: accent,
+                  fontFamily: T.body,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Icon.invest size={15} color={accent} />
+                {overweight ? `Rebalancear — ${overweight.label} está em ${overweight.pct.toFixed(0)}%` : "Planejar rebalanceamento"}
+              </button>
             )}
           </>
         )}

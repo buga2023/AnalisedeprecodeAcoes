@@ -8,12 +8,13 @@ import { Sparkline } from "../Charts";
 import { StockAvatar } from "../StockAvatar";
 import { SectionHeader } from "../SectionHeader";
 import { HoldingRow } from "../HoldingRow";
+import { ScreenMarketScreener } from "../ScreenMarketScreener";
 import type { Stock, InvestorProfile, MarketType } from "@/types/stock";
 import { fetchStockQuote, TickerLookupError } from "@/lib/api";
 import { detectMarket } from "@/lib/stockMeta";
 import { riskLabel } from "@/hooks/useInvestorProfile";
 
-type Tab = "trending" | "para-voce" | "watchlist" | "B3" | "NASDAQ";
+type Tab = "trending" | "para-voce" | "watchlist" | "B3" | "NASDAQ" | "descobrir";
 
 const TAB_LABELS: Record<Tab, string> = {
   trending: "Em alta",
@@ -21,9 +22,10 @@ const TAB_LABELS: Record<Tab, string> = {
   watchlist: "Watchlist",
   B3: "B3",
   NASDAQ: "NASDAQ",
+  descobrir: "Descobrir ✦",
 };
 
-const TABS: Tab[] = ["trending", "para-voce", "watchlist", "B3", "NASDAQ"];
+const TABS: Tab[] = ["trending", "para-voce", "watchlist", "B3", "NASDAQ", "descobrir"];
 
 /** Tickers we always surface as discovery suggestions in each tab. */
 const DISCOVERY_B3 = [
@@ -60,6 +62,7 @@ export function ScreenMarket({
 }: ScreenMarketProps) {
   const T = PraxiaTokens;
   const [tab, setTab] = useState<Tab>("trending");
+  const [assetFilter, setAssetFilter] = useState<"all" | "fii">("all");
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<Stock | null>(null);
@@ -72,23 +75,31 @@ export function ScreenMarket({
     setSearchSuggestions([]);
   }, [search]);
 
+  // Filtra por tipo de ativo (ação vs FII) antes das tabs
+  const filteredStocks = useMemo(() => {
+    if (assetFilter === "fii") return stocks.filter((s) => s.assetType === "fii");
+    return stocks.filter((s) => s.assetType !== "fii");
+  }, [stocks, assetFilter]);
+
+  const hasFIIs = useMemo(() => stocks.some((s) => s.assetType === "fii"), [stocks]);
+
   const list = useMemo(() => {
-    if (tab === "B3") return stocks.filter((s) => s.market === "B3");
-    if (tab === "NASDAQ") return stocks.filter((s) => s.market === "NASDAQ");
-    if (tab === "watchlist") return stocks.filter((s) => s.isFavorite);
+    if (tab === "descobrir") return [];
+    if (tab === "B3") return filteredStocks.filter((s) => s.market === "B3");
+    if (tab === "NASDAQ") return filteredStocks.filter((s) => s.market === "NASDAQ");
+    if (tab === "watchlist") return filteredStocks.filter((s) => s.isFavorite);
     if (tab === "para-voce") {
-      // ranking pelo score fundamentalista
-      return [...stocks].sort((a, b) => b.score - a.score);
+      return [...filteredStocks].sort((a, b) => b.score - a.score);
     }
     // trending: maiores |changePercent|
-    return [...stocks].sort(
+    return [...filteredStocks].sort(
       (a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)
     );
-  }, [stocks, tab]);
+  }, [filteredStocks, tab]);
 
   /** Tickers we suggest in this tab that the user does NOT already hold. */
   const discoveryTickers = useMemo(() => {
-    const owned = new Set(stocks.map((s) => s.ticker.toUpperCase()));
+    const owned = new Set(filteredStocks.map((s) => s.ticker.toUpperCase()));
     const base =
       tab === "NASDAQ"
         ? DISCOVERY_NASDAQ
@@ -96,11 +107,11 @@ export function ScreenMarket({
         ? DISCOVERY_B3
         : [];
     return base.filter((t) => !owned.has(t)).slice(0, 8);
-  }, [stocks, tab]);
+  }, [filteredStocks, tab]);
 
   const movers = useMemo(
-    () => [...stocks].sort((a, b) => b.changePercent - a.changePercent).slice(0, 5),
-    [stocks]
+    () => [...filteredStocks].sort((a, b) => b.changePercent - a.changePercent).slice(0, 5),
+    [filteredStocks]
   );
 
   const tryFetch = async (overrideTicker?: string) => {
@@ -209,6 +220,43 @@ export function ScreenMarket({
             </div>
           </div>
         </div>
+
+        {/* Toggle Ações | FIIs — só aparece se o usuário tiver FIIs na carteira */}
+        {hasFIIs && (
+          <div
+            style={{
+              display: "inline-flex",
+              gap: 4,
+              padding: 4,
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.06)",
+              border: `0.5px solid ${T.hairline}`,
+              marginBottom: 12,
+            }}
+          >
+            {(["all", "fii"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setAssetFilter(v)}
+                style={{
+                  height: 30,
+                  padding: "0 14px",
+                  borderRadius: 999,
+                  background: assetFilter === v ? T.ink : "transparent",
+                  color: assetFilter === v ? T.bg : T.ink50,
+                  border: "none",
+                  fontFamily: T.body,
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                }}
+              >
+                {v === "all" ? "Ações" : "FIIs"}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* search */}
         <form
@@ -418,6 +466,15 @@ export function ScreenMarket({
           ))}
         </div>
 
+        {/* Screener IA — tab Descobrir */}
+        {tab === "descobrir" && (
+          <ScreenMarketScreener
+            accent={accent}
+            profile={profile}
+            onOpenStock={onOpenStock}
+          />
+        )}
+
         {/* Pra curadoria strip */}
         {tab === "para-voce" && profile && (
           <PraxiaCard
@@ -463,7 +520,7 @@ export function ScreenMarket({
         )}
 
         {/* movers strip */}
-        {movers.length > 0 && (
+        {tab !== "descobrir" && movers.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <SectionHeader label="Em destaque hoje" />
             <div
@@ -488,81 +545,82 @@ export function ScreenMarket({
           </div>
         )}
 
-        {/* main list */}
-        {list.length === 0 && discoveryTickers.length === 0 ? (
-          <PraxiaCard padding={24}>
-            <div
-              style={{
-                textAlign: "center",
-                fontFamily: T.body,
-                fontSize: 13,
-                color: T.ink50,
-              }}
-            >
-              {tab === "watchlist"
-                ? "Sua watchlist está vazia. Toque na estrela em uma ação."
-                : "Nenhum ativo aqui ainda."}
-            </div>
-          </PraxiaCard>
-        ) : (
+        {/* main list — oculto na tab Descobrir (screener já renderizou acima) */}
+        {tab !== "descobrir" && (
           <>
-            {list.length > 0 && (
-              <PraxiaCard padding={4}>
-                {list.map((s, i) => (
-                  <HoldingRow
-                    key={s.ticker}
-                    stock={s}
-                    onClick={() => onOpenStock(s)}
-                    isLast={i === list.length - 1}
-                  />
-                ))}
-              </PraxiaCard>
-            )}
-
-            {discoveryTickers.length > 0 && (
-              <div style={{ marginTop: list.length > 0 ? 18 : 0 }}>
-                <SectionHeader
-                  label={
-                    tab === "NASDAQ"
-                      ? "Descobrir na NASDAQ"
-                      : tab === "B3"
-                      ? "Descobrir na B3"
-                      : "Sugestões pra estudar"
-                  }
-                />
+            {list.length === 0 && discoveryTickers.length === 0 ? (
+              <PraxiaCard padding={24}>
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 8,
-                  }}
-                >
-                  {discoveryTickers.map((tk) => (
-                    <DiscoveryChip
-                      key={tk}
-                      ticker={tk}
-                      accent={accent}
-                      onPick={async () => {
-                        const ok = await onAddTicker(tk);
-                        if (!ok) {
-                          // already surfaced via error state above
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontFamily: T.body,
-                    fontSize: 11,
-                    color: T.ink30,
                     textAlign: "center",
+                    fontFamily: T.body,
+                    fontSize: 13,
+                    color: T.ink50,
                   }}
                 >
-                  Toque pra adicionar à sua carteira de paper trading.
+                  {tab === "watchlist"
+                    ? "Sua watchlist está vazia. Toque na estrela em uma ação."
+                    : "Nenhum ativo aqui ainda."}
                 </div>
-              </div>
+              </PraxiaCard>
+            ) : (
+              <>
+                {list.length > 0 && (
+                  <PraxiaCard padding={4}>
+                    {list.map((s, i) => (
+                      <HoldingRow
+                        key={s.ticker}
+                        stock={s}
+                        onClick={() => onOpenStock(s)}
+                        isLast={i === list.length - 1}
+                      />
+                    ))}
+                  </PraxiaCard>
+                )}
+
+                {discoveryTickers.length > 0 && (
+                  <div style={{ marginTop: list.length > 0 ? 18 : 0 }}>
+                    <SectionHeader
+                      label={
+                        tab === "NASDAQ"
+                          ? "Descobrir na NASDAQ"
+                          : tab === "B3"
+                          ? "Descobrir na B3"
+                          : "Sugestões pra estudar"
+                      }
+                    />
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      {discoveryTickers.map((tk) => (
+                        <DiscoveryChip
+                          key={tk}
+                          ticker={tk}
+                          accent={accent}
+                          onPick={async () => {
+                            await onAddTicker(tk);
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontFamily: T.body,
+                        fontSize: 11,
+                        color: T.ink30,
+                        textAlign: "center",
+                      }}
+                    >
+                      Toque pra adicionar à sua carteira de paper trading.
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

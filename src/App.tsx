@@ -58,6 +58,12 @@ const PortfolioInsightsModal = lazy(() =>
 const OptimizeDividendsModal = lazy(() =>
   import("@/components/praxia/OptimizeDividendsModal").then((m) => ({ default: m.OptimizeDividendsModal }))
 );
+const ScreenRebalance = lazy(() =>
+  import("@/components/praxia/screens/ScreenRebalance").then((m) => ({ default: m.ScreenRebalance }))
+);
+const ScreenTaxReport = lazy(() =>
+  import("@/components/praxia/screens/ScreenTaxReport").then((m) => ({ default: m.ScreenTaxReport }))
+);
 import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { useInvestorProfile } from "@/hooks/useInvestorProfile";
 import { useTransactions } from "@/hooks/useTransactions";
@@ -74,7 +80,7 @@ import type {
   TransactionType,
 } from "@/types/stock";
 
-type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "privacy" | "terms" | "delete-account";
+type Screen = "home" | "market" | "analysis" | "stock" | "order" | "review" | "activity" | "profile" | "batch" | "alerts" | "compare" | "news" | "dividends" | "rebalance" | "tax-report" | "privacy" | "terms" | "delete-account";
 
 function ScreenFallback() {
   return (
@@ -315,7 +321,11 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
       )}
 
       {screen === "activity" && (
-        <ScreenActivity accent={accent} transactions={transactions} />
+        <ScreenActivity
+          accent={accent}
+          transactions={transactions}
+          onOpenTaxReport={() => setScreen("tax-report")}
+        />
       )}
 
       {screen === "profile" && (
@@ -406,6 +416,28 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             onOpenStock={openStock}
             onOpenAlerts={() => setScreen("alerts")}
             onOpenCompare={(ticker) => addToCompareAndOpen(ticker)}
+            onOpenRebalance={() => setScreen("rebalance")}
+          />
+        )}
+
+        {screen === "tax-report" && (
+          <ScreenTaxReport
+            accent={accent}
+            transactions={transactions}
+            onBack={() => setScreen("activity")}
+          />
+        )}
+
+        {screen === "rebalance" && (
+          <ScreenRebalance
+            accent={accent}
+            stocks={stocks}
+            profile={profile}
+            onBack={() => setScreen("analysis")}
+            onApplyTransaction={async (ticker, type, shares, price) =>
+              applyTransaction(ticker, type, shares, price)
+            }
+            onRecord={record}
           />
         )}
 
@@ -533,6 +565,7 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
             stocks={stocks}
             profile={profile}
             accent={accent}
+            onOpenRebalance={() => { setInsightsOpen(false); setScreen("rebalance"); }}
           />
         </Suspense>
       )}

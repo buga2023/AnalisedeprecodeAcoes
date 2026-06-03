@@ -19,6 +19,7 @@ import { StockNewsSection } from "../StockNewsSection";
 import { StockFundamentalsTrend } from "../StockFundamentalsTrend";
 import { StockReportsSection } from "../StockReportsSection";
 import { AIBadge } from "../AIBadge";
+import { FIIDetailStats } from "../FIIDetailStats";
 
 interface ScreenStockDetailProps {
   stock: Stock;
@@ -558,8 +559,13 @@ export function ScreenStockDetail({
           })()}
         </div>
 
-        {/* ── Valuation — Como calculamos ──────────────────────────── */}
-        <PraxiaCard
+        {/* ── Métricas FII — substitui Valuation quando é FII ─────── */}
+        {stock.assetType === "fii" && (
+          <FIIDetailStats stock={stock} accent={accent} />
+        )}
+
+        {/* ── Valuation — Como calculamos (apenas ações) ───────────── */}
+        {stock.assetType !== "fii" && (<PraxiaCard
           padding={16}
           style={{ marginTop: 16, border: `0.5px solid ${T.hairlineStrong}` }}
         >
@@ -756,7 +762,7 @@ export function ScreenStockDetail({
               Calcule em lote — importe sua planilha
             </button>
           )}
-        </PraxiaCard>
+        </PraxiaCard>)}
 
         <StockAIAnalysisSection stock={stock} profile={profile} accent={accent} />
 

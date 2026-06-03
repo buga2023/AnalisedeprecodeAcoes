@@ -11,6 +11,7 @@ interface PortfolioInsightsModalProps {
   stocks: Stock[];
   profile: InvestorProfile | null;
   accent?: string;
+  onOpenRebalance?: () => void;
 }
 
 export function PortfolioInsightsModal({
@@ -19,6 +20,7 @@ export function PortfolioInsightsModal({
   stocks,
   profile,
   accent = PraxiaTokens.accent,
+  onOpenRebalance,
 }: PortfolioInsightsModalProps) {
   const T = PraxiaTokens;
   if (!open) return null;
@@ -106,6 +108,32 @@ export function PortfolioInsightsModal({
           }}
         >
           <PortfolioInsightsContent stocks={stocks} profile={profile} accent={accent} />
+
+          {onOpenRebalance && (
+            <button
+              onClick={() => { onClose(); onOpenRebalance(); }}
+              style={{
+                width: "100%",
+                marginTop: 16,
+                padding: "13px 16px",
+                borderRadius: 14,
+                background: `${accent}14`,
+                border: `0.5px solid ${accent}44`,
+                color: accent,
+                fontFamily: T.body,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <Icon.invest size={15} color={accent} />
+              Planejar rebalanceamento
+            </button>
+          )}
         </div>
       </div>
     </>

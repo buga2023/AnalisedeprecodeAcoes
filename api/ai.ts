@@ -43,14 +43,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
     ? (bodyProvider as Provider)
     : defaultProvider();
 
+  // Valida input antes de checar chave — retorna 400 sem depender do ambiente.
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return response.status(400).json({ error: "messages e obrigatorio." });
+  }
+
   if (!getProviderApiKey(provider)) {
     return response.status(503).json({
       error: `IA nao configurada no servidor: defina ${provider.toUpperCase()}_API_KEY no ambiente.`,
     });
-  }
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return response.status(400).json({ error: "messages e obrigatorio." });
   }
 
   // Cache: mesma combinação de (provider, messages, temperature, max_tokens,

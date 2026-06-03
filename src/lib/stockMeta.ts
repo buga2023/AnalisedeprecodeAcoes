@@ -1,5 +1,50 @@
 import type { MarketType } from '@/types/stock';
 
+// Tickers B3 que terminam em "11" mas NÃO são FIIs (ETFs, BDRs).
+const NOT_FII = new Set([
+  "BOVA11", "SMAL11", "IVVB11", "XINA11", "HASH11", "GOLD11",
+  "DIVO11", "MATB11", "ECOO11", "FIND11", "SPXI11", "NSDQ11",
+  "ACWI11", "DEFI11", "NVDC11", "TSLA11", "BITI11",
+]);
+
+/**
+ * Retorna true quando o ticker é um FII B3 (heurística: termina em 11 e não
+ * é ETF/BDR conhecido). Adequado para MVP — pode ser refinado via quoteType.
+ */
+export function isFII(ticker: string): boolean {
+  const t = ticker.toUpperCase();
+  return /^[A-Z]{4}11$/.test(t) && !NOT_FII.has(t);
+}
+
+/** Segmento FII baseado nos 4 primeiros caracteres do ticker. */
+const FII_SEGMENT: Record<string, string> = {
+  KNRI: "Lajes Corp.",
+  HGLG: "Logística",
+  XPML: "Shopping",
+  BTLG: "Logística",
+  RBRP: "Lajes Corp.",
+  VISC: "Shopping",
+  ALZR: "Lajes Corp.",
+  BRCO: "Logística",
+  HGBS: "Shopping",
+  BCFF: "Papel",
+  KNCR: "Recebíveis",
+  HGCR: "Recebíveis",
+  MXRF: "Recebíveis",
+  XPCM: "Lajes Corp.",
+  PVBI: "Lajes Corp.",
+  GGRC: "Logística",
+  RBVA: "Varejo",
+  BPFF: "Papel",
+  JSRE: "Lajes Corp.",
+  HGRU: "Renda Urb.",
+  RCRB: "Lajes Corp.",
+  CPFF: "Papel",
+  CPTS: "Recebíveis",
+  URPR: "Recebíveis",
+  TRXF: "Logística",
+};
+
 const SECTOR_HINTS: Record<string, string> = {
   PETR: 'Energia',
   VALE: 'Mineração',
@@ -66,6 +111,7 @@ export function detectMarket(ticker: string): MarketType {
 export function detectSector(ticker: string): string {
   const t = ticker.toUpperCase();
   const stem = t.replace(/\d+$/, '').slice(0, 4);
+  if (isFII(t)) return FII_SEGMENT[stem] ?? "FII";
   return SECTOR_HINTS[stem] ?? SECTOR_HINTS[t] ?? '—';
 }
 

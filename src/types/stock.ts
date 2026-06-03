@@ -36,6 +36,8 @@ export interface Stock {
   /** Graham & Valuation metrics */
   grahamValue?: number;
   marginOfSafety?: number;
+  /** "stock" = ação ordinária/preferencial; "fii" = Fundo Imobiliário B3 */
+  assetType?: "stock" | "fii";
   /** Praxia UI metadata */
   name?: string;
   market?: MarketType;
@@ -143,6 +145,8 @@ export interface Transaction {
   total: number;
   fee: number;
   timestamp: string;
+  /** true quando a venda e compra ocorreram no mesmo dia (day trade). */
+  dayTrade?: boolean;
 }
 
 /* ─── Praxia: price alerts ──────────────────────────────────────────────── */

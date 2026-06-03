@@ -758,6 +758,69 @@ Responda em portugues brasileiro, sem emojis. Toda recomendacao DEVE ter fontes.
   return result;
 }
 
+export interface RebalanceExplicacao {
+  comentario: string;
+  alertas: string[];
+  fontes: string[];
+}
+
+/**
+ * Pede à IA comentário sobre o plano de rebalanceamento. Sem cache — as ordens
+ * mudam a cada ajuste dos sliders.
+ */
+export async function explicarRebalanceamento(
+  orders: Array<{
+    ticker: string;
+    type: "buy" | "sell";
+    shares: number;
+    estimatedValue: number;
+    reason: string;
+    sector: string;
+  }>,
+  profile: InvestorProfile | null
+): Promise<RebalanceExplicacao> {
+  if (orders.length === 0) {
+    return {
+      comentario: "A carteira já está próxima do alvo. Nenhuma ordem necessária.",
+      alertas: [],
+      fontes: ["cálculo do app"],
+    };
+  }
+
+  const orderLines = orders
+    .map(
+      (o) =>
+        `${o.type === "buy" ? "COMPRAR" : "VENDER"} ${o.shares}x ${o.ticker} (${o.sector}) — R$${o.estimatedValue.toFixed(0)} — ${o.reason}`
+    )
+    .join("\n");
+
+  const prompt = `${describeProfile(profile)}
+
+Plano de rebalanceamento proposto pelo app (cálculo determinístico):
+${orderLines}
+
+Comente esse plano em 2-3 frases, começando com "Pelo seu perfil [risco]...".
+Sinalize até 2 alertas práticos (ex.: timing de ex-dividendo, liquidez, IR).
+Seja objetivo — o usuário já viu os números.
+
+${RULES_REMINDER}
+
+Retorne JSON sem markdown:
+{
+  "comentario": "...",
+  "alertas": ["...", "..."],
+  "fontes": ["cálculo do app", "perfil do usuário"]
+}`;
+
+  const result = await callAIServerless<RebalanceExplicacao>(prompt, "json_object", "insights");
+
+  if (!Array.isArray(result.alertas)) result.alertas = [];
+  if (!Array.isArray(result.fontes)) result.fontes = ["cálculo do app"];
+  if (!result.comentario) result.comentario = "Plano gerado com base nos dados da carteira.";
+
+  return result;
+}
+
 // PRAXIA_SYSTEM_PROMPT mestre vive em src/lib/praxiaPrompt.ts (re-exportado no topo).
 
 async function callAIServerless<T>(

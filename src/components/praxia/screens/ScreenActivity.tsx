@@ -10,9 +10,10 @@ import type { Transaction } from "@/types/stock";
 interface ScreenActivityProps {
   transactions: Transaction[];
   accent?: string;
+  onOpenTaxReport?: () => void;
 }
 
-export function ScreenActivity({ transactions, accent = PraxiaTokens.accent }: ScreenActivityProps) {
+export function ScreenActivity({ transactions, accent = PraxiaTokens.accent, onOpenTaxReport }: ScreenActivityProps) {
   const T = PraxiaTokens;
 
   const grouped = useMemo(() => {
@@ -54,15 +55,46 @@ export function ScreenActivity({ transactions, accent = PraxiaTokens.accent }: S
       >
         <div
           style={{
-            fontFamily: T.display,
-            fontSize: 24,
-            fontWeight: 600,
-            color: T.ink,
-            letterSpacing: -0.6,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
             marginBottom: 14,
           }}
         >
-          Atividade
+          <div
+            style={{
+              fontFamily: T.display,
+              fontSize: 24,
+              fontWeight: 600,
+              color: T.ink,
+              letterSpacing: -0.6,
+            }}
+          >
+            Atividade
+          </div>
+          {onOpenTaxReport && transactions.some((t) => t.type === "sell") && (
+            <button
+              onClick={onOpenTaxReport}
+              style={{
+                height: 32,
+                padding: "0 12px",
+                borderRadius: 10,
+                background: `${accent}14`,
+                border: `0.5px solid ${accent}44`,
+                color: accent,
+                fontFamily: T.body,
+                fontWeight: 600,
+                fontSize: 12,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Icon.tableRows size={13} color={accent} />
+              Calcular IR
+            </button>
+          )}
         </div>
 
         {/* Summary */}

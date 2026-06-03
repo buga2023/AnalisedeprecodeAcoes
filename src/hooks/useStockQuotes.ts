@@ -3,7 +3,8 @@ import type { Stock } from "@/types/stock";
 import { fetchStockQuote, fetchMultipleQuotes } from "@/lib/api";
 import type { BrapiQuoteResult } from "@/lib/api";
 import { calculateGrahamValue, calculateROIC, calculateStockScore } from "@/lib/calculators";
-import { detectMarket, detectSector, brandColor } from "@/lib/stockMeta";
+import { calculateFIIScore } from "@/lib/fiiScore";
+import { detectMarket, detectSector, brandColor, isFII } from "@/lib/stockMeta";
 import { fetchFundamentalsFromAI, mergeAIFundamentalsIntoStock } from "@/lib/fundamentals";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -52,18 +53,25 @@ function mapQuoteToStock(
   const debtToEquity = quote.financialData?.debtToEquity ?? 0;
   const roic = calculateROIC(ebitda, totalDebt, debtToEquity);
 
-  const { total, breakdown } = calculateStockScore({
-    price,
-    grahamValue,
-    roe,
-    debtToEbitda,
-    dividendYield,
-    pl,
-    evEbitda,
-  });
+  const ticker = quote.symbol;
+  const sector = detectSector(ticker);
+  const asFII = isFII(ticker);
+
+  let scoreTotal: number;
+  let scoreBreakdown: import("@/types/stock").ScoreBreakdown;
+
+  if (asFII) {
+    const fii = calculateFIIScore({ dividendYield, pvp, segment: sector });
+    scoreTotal = fii.total;
+    scoreBreakdown = fii.stockBreakdown;
+  } else {
+    const s = calculateStockScore({ price, grahamValue, roe, debtToEbitda, dividendYield, pl, evEbitda });
+    scoreTotal = s.total;
+    scoreBreakdown = s.breakdown;
+  }
 
   return {
-    ticker: quote.symbol,
+    ticker,
     price,
     cost: existingCost ?? 0,
     quantity: existingQuantity ?? 0,
@@ -74,8 +82,8 @@ function mapQuoteToStock(
     change: quote.regularMarketChange ?? 0,
     changePercent: quote.regularMarketChangePercent ?? 0,
     lastUpdated: normalizeMarketTime(quote.regularMarketTime),
-    score: total,
-    scoreBreakdown: breakdown,
+    score: scoreTotal,
+    scoreBreakdown,
     isFavorite: existingFavorite ?? false,
     pl,
     pvp,
@@ -84,12 +92,13 @@ function mapQuoteToStock(
     netMargin,
     ebitdaMargin,
     roic,
-    grahamValue,
-    marginOfSafety: grahamValue > 0 ? ((grahamValue - price) / grahamValue) * 100 : 0,
-    name: quote.shortName ?? quote.longName ?? quote.symbol,
-    market: detectMarket(quote.symbol),
-    sector: detectSector(quote.symbol),
-    brandColor: brandColor(quote.symbol),
+    grahamValue: asFII ? undefined : grahamValue,
+    marginOfSafety: asFII || grahamValue <= 0 ? 0 : ((grahamValue - price) / grahamValue) * 100,
+    assetType: asFII ? "fii" : "stock",
+    name: quote.shortName ?? quote.longName ?? ticker,
+    market: detectMarket(ticker),
+    sector,
+    brandColor: brandColor(ticker),
   };
 }
 
