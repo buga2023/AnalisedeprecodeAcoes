@@ -81,13 +81,6 @@ export interface Relatorio {
   margem?: number;
 }
 
-export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'groq';
-
-export interface AIProviderConfig {
-  provider: AIProvider;
-  apiKey: string;
-}
-
 export interface CSVRow {
   ticker: string;
   avgCost: number;

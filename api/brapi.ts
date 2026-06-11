@@ -46,9 +46,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
   const endpoint = String(request.query.endpoint || "");
 
+  // Whitelist estrita de rotas internas — o cliente (src/lib/api.ts) só usa
+  // estas três formas. Qualquer outra coisa é 400 antes de tocar em lógica.
+  if (
+    !endpoint.startsWith("/quote/") &&
+    endpoint !== "/search" &&
+    endpoint !== "/available"
+  ) {
+    return response.status(400).json({ error: "Endpoint inválido" });
+  }
+
   try {
     // 1. COTAÇÕES E FUNDAMENTOS
-    if (endpoint.includes('/quote/')) {
+    if (endpoint.startsWith('/quote/')) {
       const tickersRaw = endpoint.split('/').pop() || "";
       const tickers = tickersRaw
         .split(',')
@@ -126,7 +136,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
     // 2. BUSCA / AUTOCOMPLETE
-    if (endpoint.includes('/search')) {
+    if (endpoint === '/search') {
       const q = String(request.query.q || "");
       if (!q) return response.status(200).json({ stocks: [] });
 
@@ -135,7 +145,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
     // 3. ATIVOS DISPONÍVEIS (LISTA INICIAL)
-    if (endpoint.includes('/available')) {
+    if (endpoint === '/available') {
       return response.status(200).json({
         stocks: [
           "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "MGLU3", "WEGE3", "RENT3", "SUZB3", 
@@ -148,7 +158,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
     return response.status(404).json({ error: "Rota não mapeada" });
 
   } catch (error) {
-    console.error("[api] Erro fatal:", error);
+    console.error(
+      "[api/brapi] erro fatal: %s",
+      (error instanceof Error ? error.message : String(error)).slice(0, 120)
+    );
     return response.status(500).json({ error: "Erro interno no servidor" });
   }
 }

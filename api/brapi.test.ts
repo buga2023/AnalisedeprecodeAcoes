@@ -26,11 +26,11 @@ describe("api/brapi handler", () => {
     expect(res.mock.statusCode).toBe(204);
   });
 
-  it("retorna 404 quando endpoint não mapeado", async () => {
+  it("retorna 400 quando endpoint fora da whitelist", async () => {
     const req = reqWithUniqueIp({ query: { endpoint: "/unknown" } });
     const res = makeRes();
     await handler(req, res);
-    expect(res.mock.statusCode).toBe(404);
+    expect(res.mock.statusCode).toBe(400);
   });
 
   it("/available retorna lista BR padrão", async () => {

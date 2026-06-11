@@ -5,7 +5,7 @@ import { PraxiaBackground } from "../PraxiaBackground";
 import { PraxiaCard } from "../PraxiaCard";
 import { Icon } from "../Icon";
 import { PraMark } from "../PraMark";
-import type { AIProvider, AIProviderConfig, InvestorProfile } from "@/types/stock";
+import type { InvestorProfile } from "@/types/stock";
 import {
   riskLabel,
   horizonLabel,
@@ -27,8 +27,6 @@ interface ScreenProfileProps {
   onAccentChange: (a: string) => void;
   tone: ChatTone;
   onToneChange: (t: ChatTone) => void;
-  providerConfig: AIProviderConfig | null;
-  onProviderSave: (config: AIProviderConfig | null) => void;
   onRetakeQuiz: () => void;
   onOpenBatchValuation?: () => void;
   onOpenActivity?: () => void;
@@ -47,8 +45,6 @@ export function ScreenProfile({
   onAccentChange,
   tone,
   onToneChange,
-  providerConfig,
-  onProviderSave,
   onRetakeQuiz,
   onOpenBatchValuation,
   onOpenActivity,
@@ -60,7 +56,6 @@ export function ScreenProfile({
   onClearLocalData,
 }: ScreenProfileProps) {
   const T = PraxiaTokens;
-  const [showAI, setShowAI] = useState(false);
   const [aiStats, setAiStats] = useState<TelemetryStats>(() => getStats());
 
   // Atualiza stats quando a tela ganha foco — barato e mantem o painel atual.
@@ -269,43 +264,6 @@ export function ScreenProfile({
               </button>
             ))}
           </div>
-        </PraxiaCard>
-
-        {/* AI Provider */}
-        <PraxiaCard padding={16}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <SettingLabel label="Provedor de IA" sub={providerConfig ? `${providerConfig.provider} configurado` : "nenhum configurado"} />
-            <button
-              onClick={() => setShowAI((v) => !v)}
-              style={{
-                background: "none",
-                border: "none",
-                color: accent,
-                fontFamily: T.body,
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {showAI ? "Fechar" : "Configurar"}
-            </button>
-          </div>
-          {showAI && (
-            <AIProviderForm
-              accent={accent}
-              current={providerConfig}
-              onSave={(c) => {
-                onProviderSave(c);
-                setShowAI(false);
-              }}
-            />
-          )}
         </PraxiaCard>
 
         {/* Ferramentas */}
@@ -604,130 +562,6 @@ function SettingLabel({ label, sub }: { label: string; sub?: string }) {
           {sub}
         </div>
       )}
-    </div>
-  );
-}
-
-const PROVIDERS: { value: AIProvider; label: string; hint: string }[] = [
-  { value: "groq", label: "Groq", hint: "Llama 3.3 70B · grátis" },
-  { value: "openai", label: "OpenAI", hint: "GPT-4o" },
-  { value: "anthropic", label: "Anthropic", hint: "Claude 3.5 Sonnet" },
-  { value: "gemini", label: "Gemini", hint: "Google Gemini 1.5 Flash" },
-];
-
-function AIProviderForm({
-  accent,
-  current,
-  onSave,
-}: {
-  accent: string;
-  current: AIProviderConfig | null;
-  onSave: (c: AIProviderConfig | null) => void;
-}) {
-  const T = PraxiaTokens;
-  const [provider, setProvider] = useState<AIProvider>(current?.provider ?? "groq");
-  const [apiKey, setApiKey] = useState(current?.apiKey ?? "");
-
-  return (
-    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 6,
-        }}
-      >
-        {PROVIDERS.map((p) => (
-          <button
-            key={p.value}
-            onClick={() => setProvider(p.value)}
-            style={{
-              textAlign: "left",
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: provider === p.value ? `${accent}25` : "rgba(255,255,255,0.04)",
-              border:
-                provider === p.value
-                  ? `1px solid ${accent}`
-                  : `0.5px solid ${T.hairline}`,
-              color: T.ink,
-              cursor: "pointer",
-            }}
-          >
-            <div
-              style={{
-                fontFamily: T.display,
-                fontWeight: 600,
-                fontSize: 12.5,
-              }}
-            >
-              {p.label}
-            </div>
-            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.ink50 }}>
-              {p.hint}
-            </div>
-          </button>
-        ))}
-      </div>
-      <input
-        id="ai-api-key"
-        name="apiKey"
-        type="password"
-        value={apiKey}
-        onChange={(e) => setApiKey(e.target.value)}
-        placeholder="Cole sua API key"
-        style={{
-          height: 40,
-          padding: "0 12px",
-          borderRadius: 10,
-          background: "rgba(255,255,255,0.04)",
-          border: `0.5px solid ${T.hairline}`,
-          color: T.ink,
-          fontFamily: T.mono,
-          fontSize: 12,
-          outline: "none",
-        }}
-      />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={() => {
-            if (current) onSave(null);
-          }}
-          disabled={!current}
-          style={{
-            flex: 1,
-            height: 38,
-            borderRadius: 10,
-            background: "rgba(255,255,255,0.04)",
-            color: current ? T.ink70 : T.ink30,
-            border: `0.5px solid ${T.hairline}`,
-            fontFamily: T.body,
-            fontSize: 12.5,
-            fontWeight: 600,
-            cursor: current ? "pointer" : "not-allowed",
-          }}
-        >
-          Remover
-        </button>
-        <button
-          disabled={!apiKey.trim()}
-          onClick={() => onSave({ provider, apiKey: apiKey.trim() })}
-          style={{
-            flex: 1,
-            height: 38,
-            borderRadius: 10,
-            background: apiKey.trim() ? accent : "rgba(255,255,255,0.1)",
-            color: apiKey.trim() ? "white" : "rgba(255,255,255,0.4)",
-            border: "none",
-            fontFamily: T.body,
-            fontSize: 12.5,
-            fontWeight: 700,
-            cursor: apiKey.trim() ? "pointer" : "not-allowed",
-          }}
-        >
-          Salvar
-        </button>
-      </div>
     </div>
   );
 }

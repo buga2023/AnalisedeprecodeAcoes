@@ -68,13 +68,11 @@ import { useStockQuotes } from "@/hooks/useStockQuotes";
 import { useInvestorProfile } from "@/hooks/useInvestorProfile";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useUIPreferences } from "@/hooks/useUIPreferences";
-import { useAIProvider } from "@/hooks/useAIProvider";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useAuth } from "@/hooks/useAuth";
 import { useDividendCalendar } from "@/hooks/useDividendCalendar";
 import { totalPortfolioValue } from "@/lib/portfolio";
 import type {
-  AIProviderConfig,
   OrderType,
   Stock,
   TransactionType,
@@ -115,7 +113,6 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
   const { stocks, addStock, applyTransaction, toggleFavorite, error, clearError } =
     useStockQuotes();
   const { transactions, record, clear: clearTransactions } = useTransactions();
-  const { providerConfig, setProviderConfig, clearProviderConfig } = useAIProvider();
   const {
     alerts,
     activeAlerts,
@@ -223,14 +220,6 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
     setScreen("activity");
   }, [activeStock, orderDraft, applyTransaction, record]);
 
-  const handleProviderSave = useCallback(
-    (config: AIProviderConfig | null) => {
-      if (config) setProviderConfig(config);
-      else clearProviderConfig();
-    },
-    [setProviderConfig, clearProviderConfig]
-  );
-
   const clearAllLocal = useCallback(() => {
     if (!window.confirm("Apagar TODOS os dados locais (perfil, carteira, transações, chat)?")) return;
     resetProfile();
@@ -336,8 +325,6 @@ function PraxiaApp({ username, onLogout }: { username: string; onLogout: () => v
           onToneChange={setTone}
           profile={profile}
           username={username}
-          providerConfig={providerConfig}
-          onProviderSave={handleProviderSave}
           onRetakeQuiz={() => {
             resetProfile();
             setBootScreen("quiz");

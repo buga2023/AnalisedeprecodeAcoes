@@ -9,19 +9,23 @@ npm run dev       # Vite dev server with HMR
 npm run build     # Type-check (tsc -b) then bundle (vite build)
 npm run lint      # Run ESLint
 npm run preview   # Serve the production dist/ build locally
+npm run test      # Vitest in watch mode
+npm run test:run  # Vitest single run (550+ tests, must stay green)
+npm run coverage  # Vitest with V8 coverage
+npm run test:e2e  # Playwright E2E
 ```
 
-There is no test suite configured. The lint baseline has ~18 pre-existing `any` errors and 2 warnings — don't be alarmed if your changes leave them in place; just don't add new ones.
+The lint baseline has ~15 pre-existing `any` errors and some warnings — don't be alarmed if your changes leave them in place; just don't add new ones.
 
 ## Architecture
 
-Single-page React 19 + TypeScript SPA branded **Praxia** — Brazilian stock portfolio tracker with a conversational AI assistant ("Pra") and AI-generated analyses. Mobile-first: the `AppShell` constrains the app to a ~440px column on desktop, full-width on phones. No router, no global state library — `App.tsx` keeps a `screen` union (`"home" | "market" | "stock" | "order" | "review" | "activity" | "profile"`) and conditionally renders each `Screen*` component.
+Single-page React 19 + TypeScript SPA branded **Praxia** — Brazilian stock portfolio tracker with a conversational AI assistant ("Pra") and AI-generated analyses. Mobile-first: the `AppShell` constrains the app to a ~440px column on desktop, full-width on phones. No router, no global state library — `App.tsx` keeps a `screen` union (18 screens: `home/market/analysis/stock/order/review/activity/profile/batch/alerts/compare/news/dividends/rebalance/tax-report/privacy/terms/delete-account` — see `type Screen` in `App.tsx`) and conditionally renders each `Screen*` component.
 
-Serverless functions live under `api/` (Vercel handlers): they proxy LLM providers, Yahoo Finance, scraping, and macro market data.
+Serverless functions live under `api/` (Vercel handlers): they proxy LLM providers, Yahoo Finance, scraping, news (Google News/GDELT), macro data (BCB) and Supabase account deletion. Auth is real: Supabase magic-link + Postgres + RLS.
 
 ### Boot flow (`src/App.tsx`)
 
-1. `LoginScreen` — gates entry (placeholder, no real auth)
+1. `LoginScreen` — Supabase magic-link (e-mail); shows a config warning when `VITE_SUPABASE_*` envs are absent
 2. If no `InvestorProfile` saved → `ScreenOnboarding` → `ScreenQuiz` (or Pra elicits it conversationally if the user opens the chat directly)
 3. Main app: a `screen` state drives which `Screen*` is rendered inside `AppShell`. `BottomNav` switches between `home/market/activity/profile`. `FloatingPraButton` opens `ChatSheet` overlay on any screen.
 
@@ -120,13 +124,14 @@ Graham Intrinsic Value: `sqrt(22.5 × LPA × VPA)`. Bazin ceiling: `DPA / 0.06`.
 | `stocks-ai-relatorios` | `useRelatorios` (24h cache) |
 | `stocks-ai-analysis:{TICKER}` | `StockAIAnalysisSection` (24h cache per ticker) |
 | `stocks-ai-portfolio-insights` | `PortfolioInsightsModal` (6h, invalidated by portfolio signature) |
-| `stocks-ai-provider-config` | `useAIProvider` (dormant — server-side env vars are the source of truth now) |
+
+The old `stocks-ai-provider-config` key (client-side AI provider + API key) was **removed** for security — `main.tsx` purges it at boot. AI provider/keys are server-side env vars only.
 
 ## Styling
 
 - Tailwind CSS v4 (`@tailwindcss/vite`) for utilities; **but most Praxia components use inline styles + design tokens** (`PraxiaTokens` in `src/components/praxia/tokens.ts`) rather than Tailwind classes, because the UI is highly bespoke
-- Fonts: `Sora` (display), `Manrope` (body), `JetBrains Mono` (monospace, numbers)
-- Color tokens: `accent` (default `#5b7cff`, configurable in `useUIPreferences`), `up` (green), `down` (red), `warn` (amber), `ink`/`ink70`/`ink50`/`ink30` for text steps
+- Fonts: `Cormorant Garamond` (display), `Manrope` (body), `JetBrains Mono` (monospace, numbers)
+- Color tokens: `bg` onyx `#0a0a10`, `gold` champagne `#c8a25c` (single accent, configurable in `useUIPreferences`), `up` sage green, `down` brick red, `ink`/`ink70`/`ink50`/`ink30` for text steps
 - Keyframes in `src/index.css`: `praFadeIn`, `praSlideUp`, `praDot` — reuse these for overlays/loading states
 - Formatters: `fmt.brl`, `fmt.pct`, `fmt.num`, `fmt.compact` (all in `tokens.ts`)
 - The legacy shadcn/ui stack (`src/components/ui/`, `src/components/stocks/`) was removed; don't reintroduce it
@@ -134,6 +139,9 @@ Graham Intrinsic Value: `sqrt(22.5 × LPA × VPA)`. Bazin ceiling: `DPA / 0.06`.
 ## Conventions
 
 - Modal overlays use `position: absolute; inset: 0` relative to `AppShell` (which is `position: relative`). To overlay the whole app, render the modal as a sibling of the screen in `App.tsx`, not inside the scroll container
-- Server-side AI keys only — never send `apiKey` from the client. The `useAIProvider` hook still exists for backwards compatibility but is no longer wired into requests
-- When adding a new AI-driven feature, route through `/api/ai` with `{ messages, temperature, max_tokens, response_format }` — provider is resolved server-side
+- Server-side AI keys only — never send `apiKey` from the client (the old `useAIProvider` hook was removed; LLM calls go through `api/_llm.ts` with `process.env.*` keys)
+- When adding a new AI-driven feature, route through `/api/ai` with `{ messages, temperature, max_tokens, response_format }` — provider is resolved server-side, `max_tokens` hard-capped at 2048
+- New serverless endpoints must call `applyCors` (`api/_cors.ts`) first and `checkRateLimit` (`api/_ratelimit.ts`), validate input (ticker regex) before hitting upstream, and log only `(status, short-message)` — follow any existing `api/*.ts` as template
+- Security headers (CSP, X-Frame-Options, HSTS…) are defined in `vercel.json` — if you add an external origin the client talks to directly, extend `connect-src` there
+- `xlsx` is pinned to 0.20.3 via vendored tarball (`vendor/xlsx-0.20.3.tgz`, `file:` dep) because the npm registry only has the vulnerable 0.18.5 — don't "upgrade" it back from npm
 - New tickers/positions: prefer `useStockQuotes.addStock` + `applyTransaction` over direct localStorage edits
