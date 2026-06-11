@@ -41,3 +41,4 @@ playwright-report/
 .claude/
 .mcp.json
 .playwright-mcp/
+.certs/

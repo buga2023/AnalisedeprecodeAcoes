@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "./_cors";
 import { checkRateLimit } from "./_ratelimit";
 import { cacheKey, getCached, setCached } from "./_aicache";
-import { callLLM, defaultProvider, getProviderApiKey, LLMError, PROVIDERS, type Message, type Provider } from "./_llm";
+import { callLLMWithFallback, defaultProvider, getProviderApiKey, LLMError, PROVIDERS, type Message, type Provider } from "./_llm";
 
 const MAX_TOKENS_HARD_CAP = 2048;
 
@@ -65,7 +65,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
   response.setHeader("X-Cache", "MISS");
 
   try {
-    const result = await callLLM({ provider, messages, temperature, max_tokens, response_format });
+    const result = await callLLMWithFallback({ provider, messages, temperature, max_tokens, response_format });
     setCached(key, result);
     return response.status(200).json(result);
   } catch (error) {

@@ -165,6 +165,57 @@ describe("api/ai handler", () => {
     expect((res.mock.body as { provider: string }).provider).toBe("gemini");
   });
 
+  it("cerebras: encaminha quando chave presente", async () => {
+    vi.stubEnv("CEREBRAS_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "out" } }] }), { status: 200 })
+      )
+    );
+    const handler = await loadHandler();
+    const req = reqWithUniqueIp({
+      method: "POST",
+      body: { provider: "cerebras", messages: [{ role: "user", content: "x" }] },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.mock.statusCode).toBe(200);
+    expect((res.mock.body as { provider: string }).provider).toBe("cerebras");
+  });
+
+  it("faz fallback para outro provedor configurado quando o primário falha com 401", async () => {
+    vi.stubEnv("AI_PROVIDER", "groq");
+    vi.stubEnv("GROQ_API_KEY", "chave-ruim");
+    vi.stubEnv("CEREBRAS_API_KEY", "chave-boa");
+    // Garante cadeia determinística [groq, cerebras] mesmo com .env.local carregado.
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "bad key" } }), { status: 401 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [{ message: { content: "salvou" } }] }), { status: 200 })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = await loadHandler();
+    const req = reqWithUniqueIp({
+      method: "POST",
+      body: { messages: [{ role: "user", content: "fallback?" }] },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.mock.statusCode).toBe(200);
+    expect((res.mock.body as { provider: string }).provider).toBe("cerebras");
+    expect((res.mock.body as { content: string }).content).toBe("salvou");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("retorna do cache em segunda chamada idêntica", async () => {
     vi.stubEnv("AI_PROVIDER", "groq");
     vi.stubEnv("GROQ_API_KEY", "k");

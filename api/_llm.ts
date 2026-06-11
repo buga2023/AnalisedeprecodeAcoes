@@ -1,5 +1,5 @@
 /**
- * Helper compartilhado para chamada a provedor LLM (Groq/OpenAI/Anthropic/Gemini).
+ * Helper compartilhado para chamada a provedor LLM (NVIDIA/Groq/Cerebras/OpenAI/Anthropic/Gemini).
  *
  * Centraliza o protocolo de cada provedor + resolução de env var. Os handlers
  * (`api/ai.ts`, `api/fundamentals.ts`) ficam responsáveis SOMENTE pelas suas
@@ -9,8 +9,9 @@
  * Arquivos `_*.ts` em `api/` são utilitários — não viram rota Vercel.
  */
 
-export type Provider = "nvidia" | "groq" | "openai" | "anthropic" | "gemini";
-export const PROVIDERS: Provider[] = ["nvidia", "groq", "openai", "anthropic", "gemini"];
+export type Provider = "nvidia" | "groq" | "cerebras" | "openai" | "anthropic" | "gemini";
+// Ordem importa: é a prioridade do fallback (gratuitos primeiro).
+export const PROVIDERS: Provider[] = ["nvidia", "groq", "cerebras", "openai", "anthropic", "gemini"];
 
 export interface Message {
   role: "system" | "user" | "assistant";
@@ -47,8 +48,14 @@ export function getProviderApiKey(provider: Provider): string | null {
     anthropic: process.env.ANTHROPIC_API_KEY,
     gemini: process.env.GEMINI_API_KEY,
     groq: process.env.GROQ_API_KEY,
+    cerebras: process.env.CEREBRAS_API_KEY,
   };
   return map[provider] || null;
+}
+
+/** Modelo do provedor, sobrescrevível via env (`GROQ_MODEL`, `NVIDIA_MODEL`, …). */
+function envModel(provider: Provider, fallback: string): string {
+  return process.env[`${provider.toUpperCase()}_MODEL`] || fallback;
 }
 
 /** Resolve o provedor padrão: env `AI_PROVIDER` ou `nvidia`. */
@@ -79,9 +86,37 @@ export async function callLLM(opts: CallLLMOptions): Promise<CallLLMResult> {
       return callGemini(apiKey, messages, temperature, max_tokens);
     case "groq":
       return callGroq(apiKey, messages, temperature, max_tokens, response_format);
+    case "cerebras":
+      return callCerebras(apiKey, messages, temperature, max_tokens, response_format);
     default:
       throw new LLMError(400, `Provider ${provider} nao suportado.`);
   }
+}
+
+// Erros que valem tentar outro provedor: chave inválida, rate limit, indisponibilidade.
+const FALLBACK_STATUSES = new Set([401, 403, 408, 429, 500, 502, 503, 504]);
+
+/**
+ * Como `callLLM`, mas se o provedor pedido falhar com erro recuperável
+ * (401/403/429/5xx), tenta os demais provedores COM chave configurada,
+ * na ordem de `PROVIDERS`. Lança o último erro se todos falharem.
+ */
+export async function callLLMWithFallback(opts: CallLLMOptions): Promise<CallLLMResult> {
+  const chain: Provider[] = [
+    opts.provider,
+    ...PROVIDERS.filter((p) => p !== opts.provider && getProviderApiKey(p)),
+  ];
+  let lastError: unknown;
+  for (const provider of chain) {
+    try {
+      return await callLLM({ ...opts, provider });
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof LLMError) || !FALLBACK_STATUSES.has(error.status)) throw error;
+      console.warn("[_llm] %s falhou (%d) — tentando proximo provedor", provider, error.status);
+    }
+  }
+  throw lastError;
 }
 
 async function callNvidia(
@@ -95,7 +130,7 @@ async function callNvidia(
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "meta/llama-3.3-70b-instruct",
+      model: envModel("nvidia", "meta/llama-3.3-70b-instruct"),
       messages,
       temperature,
       max_tokens,
@@ -207,7 +242,7 @@ async function callGroq(
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: envModel("groq", "qwen/qwen3-32b"),
       messages,
       temperature,
       max_tokens,
@@ -220,6 +255,32 @@ async function callGroq(
   }
   const data = await res.json();
   return { content: data.choices?.[0]?.message?.content ?? "", provider: "groq" };
+}
+
+async function callCerebras(
+  apiKey: string,
+  messages: Message[],
+  temperature: number,
+  max_tokens: number,
+  response_format: unknown
+): Promise<CallLLMResult> {
+  const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: envModel("cerebras", "gpt-oss-120b"),
+      messages,
+      temperature,
+      max_tokens,
+      ...(response_format ? { response_format } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const err = await safeJson(res);
+    throw new LLMError(res.status, err?.error?.message || "Erro na Cerebras");
+  }
+  const data = await res.json();
+  return { content: data.choices?.[0]?.message?.content ?? "", provider: "cerebras" };
 }
 
 async function safeJson(res: Response): Promise<{ error?: { message?: string } } | null> {

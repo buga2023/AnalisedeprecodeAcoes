@@ -49,7 +49,7 @@ export const PRIVACY_POLICY = {
       conteudo: [
         "Quando você usa a Pra (chat) ou pede uma análise, o servidor do Praxia repassa SOMENTE o necessário para os seguintes processadores externos:",
         "• Supabase Inc. (autenticação e banco de dados, AWS sa-east-1) — recebe seu e-mail (para magic link), identificador único da conta e os dados de portfólio/perfil/transações listados acima.",
-        "• Groq Inc. (LLM padrão) ou OpenAI / Anthropic / Google (se você escolher) — recebem suas mensagens e o contexto da sua carteira (sem nome, e-mail ou documento).",
+        "• Groq Inc. (LLM padrão) ou NVIDIA / Cerebras / OpenAI / Anthropic / Google (conforme configuração ou fallback automático) — recebem suas mensagens e o contexto da sua carteira (sem nome, e-mail ou documento).",
         "• Yahoo Finance — recebe somente o ticker que você consulta. Não enviamos identificadores seus.",
         "• Google News, GDELT, Reddit, BBC — fontes públicas de notícia. Recebem termo de busca, não dados seus.",
         "• Banco Central do Brasil (SGS) — APIs públicas, sem identificação.",
